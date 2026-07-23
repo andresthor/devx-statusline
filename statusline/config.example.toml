@@ -1,0 +1,71 @@
+# devx-statusline configuration — entirely optional.
+#
+# Every setting here already has a sensible default, so the statusline works
+# with no config file at all. To change something, copy this file to
+# config.toml (in this same directory) and uncomment the lines you want.
+#
+# A global alternative lives at ~/.claude/statusline.toml — config.toml next
+# to the script wins if both exist.
+
+
+# ── Cost ─────────────────────────────────────────────────────────────────────
+# Costs are calculated from Claude Code's own session logs in ~/.claude/projects.
+# Nothing is sent anywhere.
+
+# Hour of day (0-23) when the "today" counter resets. Default 0 (midnight).
+# Set to 6 if your day starts at 6am and late-night work should count as
+# the previous day.
+# day_start_hour = 0
+
+# The second, longer total on line 2.
+#   "month"   — rolling 30 days (default)
+#   "week"    — rolling 7 days
+#   "billing" — your actual billing period; needs billing_start or billing_day
+#   ""        — turn it off
+# cost_window = "month"
+
+# Only for cost_window = "billing". Either an exact anchor timestamp...
+# billing_start = "2026-03-28T16:00:00+00:00"
+# ...or just the day of the month your cycle starts (1-28).
+# billing_day = 1
+
+# Dollar amounts that map to fully red. Lower them to see color sooner.
+# session_cost_scale = 10.0      # per session (line 1)
+# cumulative_cost_scale = 100.0  # daily and window totals (line 2)
+
+# Set true only if your Anthropic workspace defaults to US data residency,
+# which adds a 1.1x surcharge the logs don't otherwise record.
+# us_residency = false
+
+
+# ── Appearance ───────────────────────────────────────────────────────────────
+
+# Context bar coloring: true = each block gets its own gradient color,
+# false = the whole filled portion shares one color.
+# per_block_colors = true
+
+# When your plan publishes usage limits, line 1 shows them. When it doesn't
+# (enterprise plans, typically), it shows how long this session has been
+# running instead — wall-clock, then time spent waiting on the API. These
+# set where each of those bars reads as full. They are display references,
+# not limits.
+# session_wall_scale_seconds = 14400  # 4 hours
+# session_api_scale_seconds = 1800    # 30 minutes
+
+
+# ── Components ───────────────────────────────────────────────────────────────
+# Turn individual pieces off. Anything not listed stays on.
+
+# [components]
+# update_needed = true  # ⚠ pricing-table warning (line 1, far left)
+# context = true        # context % + bar + token counts (line 1)
+# turns = true          # number of messages you've sent this session (line 1)
+# session_cost = true   # cost of this session (line 1)
+# usage = true          # plan usage bars, or session duration (line 1)
+# model = true          # model name (line 1, right)
+# effort = true         # reasoning effort next to the model name (line 1, right)
+# timestamp = true      # ◷ time of Claude's last reply (line 1, far right)
+# cwd = true            # current directory (line 2)
+# branch = true         # git branch (line 2)
+# daily_cost = true     # Σ today's total (line 2)
+# window_cost = true    # Σ month/week/billing total (line 2)

@@ -1,0 +1,9 @@
+# Python
+__pycache__/
+*.py[cod]
+
+# macOS
+.DS_Store
+
+# Local config (per-machine, not checked in)
+statusline/config.toml

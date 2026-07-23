@@ -1,0 +1,122 @@
+# devx-statusline — notes for Claude Code
+
+A statusline script for Claude Code. Two files do the work: `statusline/__main__.py`
+renders, `statusline/costs.py` reads Claude Code's session logs and prices them.
+
+Python 3.11+ (uses `tomllib`). No dependencies. No tests, no build step.
+
+## Installing it for the user
+
+```bash
+cp -R statusline ~/.claude/hooks/devx-statusline
+```
+
+Then add to `~/.claude/settings.json` (merge into the existing JSON, don't
+overwrite the file):
+
+```json
+{
+  "statusLine": {
+    "type": "command",
+    "command": "python3 ~/.claude/hooks/devx-statusline"
+  }
+}
+```
+
+If `CLAUDE_CONFIG_DIR` is set, use that path instead of `~/.claude`.
+
+Do **not** create a `config.toml` during install. Every setting has a working
+default, and an empty config file is one more thing for the user to wonder
+about. Only create one if they ask for a specific change.
+
+Tell the user to start a new session — the statusline does not appear in the
+session that installed it.
+
+## Verifying it works
+
+The script reads one JSON object on stdin and prints two lines. To check an
+install without starting a session:
+
+```bash
+echo '{"model":{"id":"claude-opus-4-8","display_name":"Opus 4.8"},
+       "context_window":{"used_percentage":18,"context_window_size":1000000},
+       "cost":{"total_cost_usd":4.2,"total_duration_ms":4920000,"total_api_duration_ms":810000},
+       "workspace":{"current_dir":"'"$PWD"'"}}' | python3 ~/.claude/hooks/devx-statusline
+```
+
+Two lines of colored output means it's working. The script never raises — a
+malformed or empty payload renders whatever it can and skips the rest. So if
+the statusline is blank in Claude Code, the problem is the `settings.json`
+path, not the script.
+
+## The ⚠ indicator — what it means and how to clear it
+
+A `⚠` at the far left of line 1 means the price list in `costs.py` needs a
+human look. It is the only maintenance this project has. Two things trigger it:
+
+**Red — an unrecognized model.** The user is on a model with no entry in
+`_BASE_PRICING`, so costs are being estimated with the fallback rate and are
+probably wrong. Fix it by adding the model's prefix and its input/output price
+per million tokens:
+
+```python
+_BASE_PRICING: dict[str, tuple[float, float]] = {
+    "claude-new-model-6": (5.0, 25.0),   # ← (input, output) USD per 1M tokens
+    ...
+}
+```
+
+**Red or yellow — a watch date.** Yellow means a dated pricing change lands
+within two weeks; red means it already passed. The entries live in
+`WATCH_DATES` in `costs.py`, each with a label saying what changes:
+
+```python
+WATCH_DATES: list[tuple[str, str]] = [
+    ("2026-08-31", "Sonnet 5 intro pricing ends → reverts to $3/$15"),
+]
+```
+
+Apply the change the label describes, then delete that entry. If no entries
+remain, leave the list empty — the indicator stays hidden.
+
+**Get prices from the source, not from memory.** Read
+https://platform.claude.com/docs/en/about-claude/pricing (or load the
+`claude-api` skill if it is available) and use the published numbers. Model
+prices change and a guess here silently corrupts every total the user sees.
+
+Cache and fast-mode rates are derived from the base input rate by the
+multipliers at the top of `costs.py` — you do not need to add those per model.
+Only `_FAST_PRICING` is a separate table, and only for models with a fast tier.
+
+## Design constraints
+
+Keep these in mind before adding anything:
+
+- **Runs on every render.** Anything slow shows up as terminal lag. The JSONL
+  parsing is cached by file mtime; keep it that way.
+- **Never raise.** A traceback would replace the user's statusline with an
+  error. Every I/O path is already wrapped; new ones should be too.
+- **No network calls, ever.** Costs are computed locally from a static price
+  table. The user is told this in the README and it should stay true.
+- **No Nerd Font glyphs.** Everything on screen is standard Unicode so it
+  renders in any terminal. `⎇ ◼ ◻ ═ ─ ◷ ◉ ○◔◑◕● Σ ⚠ •` are all safe; private
+  use area codepoints are not.
+
+## Layout
+
+```
+Line 1:  [⚠]  [context]  [turns $session]  [usage or duration]  • [model effort]  [◷ last reply]
+Line 2:  [cwd]  [branch]  • [Σ today]  • [Σ window]
+```
+
+`render_usage_block()` picks between two things for the middle of line 1: the
+plan's published usage limits when the payload has `rate_limits`, and
+wall-clock plus API-time bars for the current session when it doesn't.
+Enterprise plans generally fall into the second case.
+
+## Config
+
+Optional TOML, read from `statusline/config.toml` first, then
+`$CLAUDE_CONFIG_DIR/statusline.toml`. Every key is documented in
+`config.example.toml`, and every key has a default in the code — adding a new
+one means adding it to both places.

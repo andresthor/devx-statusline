@@ -1,0 +1,615 @@
+#!/usr/bin/env python3
+"""
+A two-line statusline for Claude Code.
+
+Line 1:  [⚠]  [ctx% bar tokens]  [Nt $sess]  [usage or session duration]  [• model]  [◷ time]
+Line 2:  [~/cwd]  [⎇ branch]  [Σ $today]  [Σ $window]
+
+Config is optional — every value below has a working default. To override,
+copy config.example.toml to config.toml next to this file, or drop a
+statusline.toml in your Claude config directory (~/.claude by default).
+"""
+
+import calendar
+import json
+import os
+import subprocess
+import sys
+import tomllib
+from datetime import datetime, timedelta
+from pathlib import Path
+
+try:
+    from .costs import (
+        cumulative_cost,
+        due_watch_dates,
+        is_known_model,
+        last_assistant_time,
+        session_turns,
+    )
+except ImportError:
+    from costs import (
+        cumulative_cost,
+        due_watch_dates,
+        is_known_model,
+        last_assistant_time,
+        session_turns,
+    )
+
+
+# ── Config ────────────────────────────────────────────────────────────────────
+
+SCRIPT_DIR = Path(__file__).resolve().parent
+CLAUDE_DIR = Path(os.environ.get("CLAUDE_CONFIG_DIR", Path.home() / ".claude"))
+CONFIG_PATHS = [
+    SCRIPT_DIR / "config.toml",  # next to the script
+    CLAUDE_DIR / "statusline.toml",  # user-global fallback
+]
+
+
+def load_config() -> dict:
+    for path in CONFIG_PATHS:
+        if path.exists():
+            try:
+                with open(path, "rb") as f:
+                    return tomllib.load(f)
+            except Exception:
+                continue
+    return {}
+
+
+def show(cfg: dict, name: str) -> bool:
+    """Whether a named component is enabled. Omitted keys default to on."""
+    return cfg.get("components", {}).get(name, True)
+
+
+# ── Catppuccin Mocha palette ──────────────────────────────────────────────────
+
+
+class C:
+    OVERLAY2 = (147, 153, 178)
+    OVERLAY1 = (127, 132, 156)
+    OVERLAY0 = (108, 112, 134)
+    SURFACE2 = (88, 91, 112)
+    GREEN = (166, 227, 161)
+    GREEN_DIM = (106, 141, 110)
+    BLUE = (137, 180, 250)
+    SAPPHIRE = (116, 199, 236)
+    YELLOW = (249, 226, 175)
+    PEACH = (250, 179, 135)
+    RED = (243, 139, 168)
+    MAROON = (235, 160, 172)
+    DEEP_RED = (170, 55, 80)
+    CLAUDE_ORANGE = (215, 119, 87)
+
+
+RESET = "\033[0m"
+BOLD = "\033[1m"
+
+
+def fg(*rgb):
+    return f"\033[38;2;{rgb[0]};{rgb[1]};{rgb[2]}m"
+
+
+# ── Update-needed indicator ──────────────────────────────────────────────────
+# Silent unless the pricing table in costs.py needs a human look: an
+# unrecognized model (costs are being guessed) or a maintenance watch-date
+# coming due. Bare glyph — color is the signal (red = now, yellow = soon).
+
+
+def _update_colors(model_id: str) -> list[tuple]:
+    colors: list[tuple] = []
+    if model_id and not is_known_model(model_id):
+        colors.append(C.RED)
+    today = datetime.now().date()
+    for iso, _label in due_watch_dates():
+        overdue = datetime.fromisoformat(iso).date() < today
+        colors.append(C.RED if overdue else C.YELLOW)
+    return colors
+
+
+def update_indicator(model_id: str) -> str:
+    colors = _update_colors(model_id)
+    if not colors:
+        return ""
+    return f"{fg(*colors[0])}{BOLD}⚠{RESET}"
+
+
+# ── Context bar ───────────────────────────────────────────────────────────────
+
+WORKING_ZONE_TOKENS = 256_000
+
+# Per-block color palettes — warm gradient from dark green through to maroon
+WORKING_BLOCK_COLORS = [C.GREEN_DIM, C.GREEN, C.YELLOW, C.PEACH, C.RED, C.MAROON]
+OVERFLOW_BLOCK_COLORS = [C.RED, C.MAROON, C.DEEP_RED, C.DEEP_RED]
+LINEAR_BLOCK_COLORS = [
+    C.GREEN_DIM,
+    C.GREEN,
+    C.YELLOW,
+    C.PEACH,
+    C.CLAUDE_ORANGE,
+    C.RED,
+    C.MAROON,
+    C.DEEP_RED,
+]
+
+
+def working_zone_color(pct: float) -> tuple:
+    """Color for 0-100% of the working zone (0-256k)."""
+    if pct < 20:
+        return C.GREEN_DIM
+    elif pct < 40:
+        return C.GREEN
+    elif pct < 60:
+        return C.YELLOW
+    elif pct < 80:
+        return C.PEACH
+    else:
+        return C.RED
+
+
+def linear_ctx_color(pct: float) -> tuple:
+    """Color for 0-100% of full context (models ≤256k)."""
+    if pct < 15:
+        return C.GREEN_DIM
+    elif pct < 30:
+        return C.GREEN
+    elif pct < 50:
+        return C.YELLOW
+    elif pct < 65:
+        return C.PEACH
+    elif pct < 80:
+        return C.RED
+    else:
+        return C.MAROON
+
+
+def _render_bar(filled: int, width: int, colors: list[tuple], per_block: bool) -> str:
+    """Render a bar with per-block or uniform coloring."""
+    if per_block:
+        parts = []
+        for i in range(width):
+            if i < filled:
+                parts.append(f"{fg(*colors[i])}◼")
+            else:
+                parts.append(f"{fg(*C.SURFACE2)}◻")
+        return "".join(parts)
+    # Uniform: use the color of the highest filled block
+    color = colors[max(0, filled - 1)] if filled > 0 else C.SURFACE2
+    return f"{fg(*color)}{'◼' * filled}{fg(*C.SURFACE2)}{'◻' * (width - filled)}"
+
+
+def context_bar_split(
+    used_tokens: int,
+    ctx_size: int,
+    per_block: bool = True,
+    working_width: int = 6,
+    overflow_width: int = 4,
+) -> str:
+    """Two-zone bar: 6 working blocks (0-256k) + space + 4 overflow blocks."""
+    w_pct = min(1.0, used_tokens / WORKING_ZONE_TOKENS)
+    w_filled = max(0, min(working_width, round(w_pct * working_width)))
+
+    if used_tokens > WORKING_ZONE_TOKENS and ctx_size > WORKING_ZONE_TOKENS:
+        o_pct = min(
+            1.0, (used_tokens - WORKING_ZONE_TOKENS) / (ctx_size - WORKING_ZONE_TOKENS)
+        )
+        o_filled = max(0, min(overflow_width, round(o_pct * overflow_width)))
+    else:
+        o_filled = 0
+
+    working_s = _render_bar(w_filled, working_width, WORKING_BLOCK_COLORS, per_block)
+    overflow_s = _render_bar(o_filled, overflow_width, OVERFLOW_BLOCK_COLORS, per_block)
+    return f"{working_s} {overflow_s}{RESET}"
+
+
+def context_bar_linear(used_pct: float, per_block: bool = True, width: int = 8) -> str:
+    """Linear bar for models with context ≤256k."""
+    filled = max(0, min(width, round(used_pct / 100 * width)))
+    return f"{_render_bar(filled, width, LINEAR_BLOCK_COLORS, per_block)}{RESET}"
+
+
+def fmt_tokens(n: int) -> str:
+    if n < 1000:
+        return str(n)
+    if n < 100_000:
+        v = n / 1000
+        return f"{v:.0f}k" if v == int(v) else f"{v:.1f}k"
+    if n >= 1_000_000:
+        m = n / 1_000_000
+        return f"{m:.0f}M" if m == int(m) else f"{m:.1f}M"
+    return f"{n // 1000}k"
+
+
+# ── Cost ──────────────────────────────────────────────────────────────────────
+
+SESSION_COST_SCALE = 10.0  # $10 session = fully red
+CUMULATIVE_COST_SCALE = 100.0  # $100 cumulative = fully red
+
+
+def cost_color(amount: float, scale: float = 10.0) -> tuple:
+    pct = amount / scale
+    if pct < 0.10:
+        return C.GREEN_DIM
+    elif pct < 0.20:
+        return C.GREEN
+    elif pct < 0.50:
+        return C.YELLOW
+    elif pct < 1.00:
+        return C.PEACH
+    else:
+        return C.RED
+
+
+def fmt_cost(amount: float, scale: float = 10.0) -> str:
+    col = cost_color(amount, scale)
+    return f"{fg(*col)}${amount:.1f}{RESET}"
+
+
+def turns_color(n: int) -> tuple:
+    if n < 7:
+        return C.GREEN_DIM
+    elif n < 14:
+        return C.GREEN
+    elif n < 21:
+        return C.YELLOW
+    elif n < 28:
+        return C.PEACH
+    elif n < 35:
+        return C.CLAUDE_ORANGE
+    elif n < 42:
+        return C.RED
+    elif n < 49:
+        return C.MAROON
+    else:
+        return C.DEEP_RED
+
+
+# ── Usage bars ────────────────────────────────────────────────────────────────
+
+
+def usage_color(pct: float) -> tuple:
+    if pct < 30:
+        return C.GREEN_DIM
+    elif pct < 50:
+        return C.GREEN
+    elif pct < 70:
+        return C.YELLOW
+    elif pct < 85:
+        return C.PEACH
+    elif pct < 95:
+        return C.RED
+    else:
+        return C.DEEP_RED
+
+
+_TIME_PIES = "○◔◑◕●"
+
+
+def time_pie(resets_at: int, window_seconds: int) -> str:
+    """Circle pie showing elapsed fraction of a time window."""
+    remaining = max(0, resets_at - int(datetime.now().timestamp()))
+    elapsed_frac = 1.0 - (remaining / window_seconds) if window_seconds else 1.0
+    elapsed_frac = max(0.0, min(1.0, elapsed_frac))
+    idx = min(len(_TIME_PIES) - 1, int(elapsed_frac * len(_TIME_PIES)))
+    return _TIME_PIES[idx]
+
+
+def usage_bar(pct: float, width: int = 5) -> str:
+    """Box-drawing progress bar: ═══── style."""
+    filled = max(0, min(width, round(pct / 100 * width)))
+    return "═" * filled + "─" * (width - filled)
+
+
+def fmt_duration(ms: int) -> str:
+    """Compact duration: 45s / 12m / 2:34."""
+    s = ms // 1000
+    if s < 60:
+        return f"{s}s"
+    if s < 3600:
+        return f"{s // 60}m"
+    h = s // 3600
+    m = (s % 3600) // 60
+    return f"{h}:{m:02d}"
+
+
+# Reference points for the session-duration bars (shown when the plan exposes
+# no rate limits, e.g. enterprise). Neither is a real limit — they just set
+# where each bar reads as "full".
+SESSION_WALL_SCALE_SEC = 4 * 3600  # 4h wall-clock
+SESSION_API_SCALE_SEC = 30 * 60  # 30m waiting on the API
+
+
+# ── Billing periods ───────────────────────────────────────────────────────────
+
+
+def billing_cutoff(cfg: dict) -> datetime | None:
+    """Compute the start of the current billing period from config."""
+    now = datetime.now()
+
+    billing_start = cfg.get("billing_start", "")
+    if billing_start:
+        anchor = datetime.fromisoformat(billing_start)
+        # Convert to local time, then strip tz for naive comparison
+        cutoff = anchor.astimezone().replace(tzinfo=None)
+        # If anchor is in the future, walk backward to find current period
+        while cutoff > now:
+            m, y = cutoff.month - 1, cutoff.year
+            if m < 1:
+                m, y = 12, y - 1
+            try:
+                cutoff = cutoff.replace(year=y, month=m)
+            except ValueError:
+                last = calendar.monthrange(y, m)[1]
+                cutoff = cutoff.replace(year=y, month=m, day=last)
+        # Walk forward to find the most recent period start <= now
+        while True:
+            y, m = cutoff.year, cutoff.month + 1
+            if m > 12:
+                m, y = 1, y + 1
+            try:
+                next_cutoff = cutoff.replace(year=y, month=m)
+            except ValueError:
+                last = calendar.monthrange(y, m)[1]
+                next_cutoff = cutoff.replace(year=y, month=m, day=last)
+            if next_cutoff > now:
+                return cutoff
+            cutoff = next_cutoff
+
+    billing_day = cfg.get("billing_day")
+    if billing_day:
+        day = int(billing_day)
+        cutoff = now.replace(day=day, hour=0, minute=0, second=0, microsecond=0)
+        if cutoff > now:
+            m, y = now.month - 1, now.year
+            if m < 1:
+                m, y = 12, y - 1
+            try:
+                cutoff = cutoff.replace(year=y, month=m)
+            except ValueError:
+                last = calendar.monthrange(y, m)[1]
+                cutoff = cutoff.replace(year=y, month=m, day=last)
+        return cutoff
+
+    return None
+
+
+def _cost_cutoff(window: str, cfg: dict) -> datetime | None:
+    """Compute the cutoff datetime for a given cost window."""
+    now = datetime.now()
+    if window == "billing":
+        return billing_cutoff(cfg)
+    return {
+        "week": now - timedelta(days=7),
+        "month": now - timedelta(days=30),
+    }.get(window)
+
+
+# ── Path / git ────────────────────────────────────────────────────────────────
+
+
+def abbreviate(path: str) -> str:
+    home = str(Path.home())
+    return "~" + path[len(home) :] if path.startswith(home) else path
+
+
+def osc8_link(uri: str, label: str) -> str:
+    """OSC 8 clickable hyperlink (Ghostty / iTerm2 / Kitty / WezTerm)."""
+    return f"\033]8;;{uri}\a{label}\033]8;;\a"
+
+
+def git_branch(cwd: str) -> str | None:
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+            cwd=cwd,
+            capture_output=True,
+            text=True,
+            timeout=2,
+        )
+        branch = result.stdout.strip()
+        return branch if branch and branch != "HEAD" else None
+    except Exception:
+        return None
+
+
+# ── Rendering ─────────────────────────────────────────────────────────────────
+
+
+def render_usage_block(data: dict, cfg: dict, dot: str) -> str:
+    """Plan usage if the payload reports it, else session duration.
+
+    Enterprise and other plans without published rate limits send no
+    `rate_limits`, so there is nothing to count down. Those fall through to
+    wall-clock and API-time bars for the current session instead.
+    """
+    rate_limits = data.get("rate_limits", {})
+    five_hour = rate_limits.get("five_hour", {})
+    seven_day = rate_limits.get("seven_day", {})
+
+    parts = []
+    if five_hour:
+        pct = round(five_hour.get("used_percentage", 0))
+        pie = time_pie(int(five_hour.get("resets_at", 0)), 5 * 3600)
+        parts.append(
+            f"{fg(*C.GREEN)}{pie}{RESET} "
+            f"{fg(*usage_color(pct))}{usage_bar(pct)} {pct}%{RESET}"
+        )
+    if seven_day:
+        pct = round(seven_day.get("used_percentage", 0))
+        parts.append(
+            f"{fg(*C.YELLOW)}7d{RESET} "
+            f"{fg(*usage_color(pct))}{usage_bar(pct)} {pct}%{RESET}"
+        )
+    if parts:
+        return dot.join(parts)
+
+    cost_data = data.get("cost", {})
+    wall_ms = int(cost_data.get("total_duration_ms", 0))
+    api_ms = int(cost_data.get("total_api_duration_ms", 0))
+    if wall_ms <= 0:
+        return ""
+
+    wall_scale = int(cfg.get("session_wall_scale_seconds", SESSION_WALL_SCALE_SEC))
+    api_scale = int(cfg.get("session_api_scale_seconds", SESSION_API_SCALE_SEC))
+    wall_pct = min(100.0, wall_ms / 1000 / wall_scale * 100)
+    api_pct = min(100.0, api_ms / 1000 / api_scale * 100)
+    return (
+        f"{fg(*C.SAPPHIRE)}◷{RESET} "
+        f"{fg(*usage_color(wall_pct))}{usage_bar(wall_pct)} {fmt_duration(wall_ms)}{RESET}"
+        f"{dot}{fg(*C.PEACH)}◉{RESET} "
+        f"{fg(*usage_color(api_pct))}{usage_bar(api_pct)} {fmt_duration(api_ms)}{RESET}"
+    )
+
+
+def main():
+    try:
+        data = json.load(sys.stdin)
+    except Exception:
+        data = {}
+
+    ctx = data.get("context_window", {})
+    used_pct = float(ctx.get("used_percentage", 0))
+    ctx_size = int(ctx.get("context_window_size", 200000))
+    # True context consumption across all token types
+    used_tokens = int(used_pct / 100 * ctx_size)
+    session_cost = float(data.get("cost", {}).get("total_cost_usd", 0.0))
+    session_id = data.get("session_id", "")
+    model_id = data.get("model", {}).get("id", "")
+    model_name = data.get("model", {}).get("display_name", "").split("(")[0].strip()
+    effort_level = data.get("effort", {}).get("level", "")
+    cwd = data.get("workspace", {}).get("current_dir", os.getcwd())
+
+    cfg = load_config()
+    projects_dir = CLAUDE_DIR / "projects"
+    us_residency = bool(cfg.get("us_residency", False))
+
+    # Today's cost, from a configurable reset hour
+    day_start_hour = int(cfg.get("day_start_hour", 0))
+    now = datetime.now()
+    day_cutoff = now.replace(hour=day_start_hour, minute=0, second=0, microsecond=0)
+    if day_cutoff > now:
+        day_cutoff -= timedelta(days=1)
+    daily_cost = cumulative_cost(day_cutoff, projects_dir, us_residency)
+    turns = session_turns(session_id, projects_dir, cwd)
+
+    # Longer cumulative window alongside it
+    window = cfg.get("cost_window", "month")
+    cumul_cost = 0.0
+    if window:
+        win_cutoff = _cost_cutoff(window, cfg)
+        if win_cutoff:
+            cumul_cost = cumulative_cost(win_cutoff, projects_dir, us_residency)
+
+    dot = f" {fg(*C.OVERLAY0)}•{RESET} "
+    gap = "  "
+
+    # ── Line 1 ────────────────────────────────────────────────────────────────
+    left = []
+
+    if show(cfg, "update_needed"):
+        indicator = update_indicator(model_id)
+        if indicator:
+            left.append(indicator)
+
+    # Context block — color and bar shape adapt to the context window size
+    if show(cfg, "context"):
+        per_block = cfg.get("per_block_colors", True)
+        if ctx_size > WORKING_ZONE_TOKENS:
+            w_pct = min(100.0, used_tokens / WORKING_ZONE_TOKENS * 100)
+            ctx_col = working_zone_color(w_pct)
+            bar_s = context_bar_split(used_tokens, ctx_size, per_block=per_block)
+        else:
+            ctx_col = linear_ctx_color(used_pct)
+            bar_s = context_bar_linear(used_pct, per_block=per_block)
+        pct_s = f"{fg(*ctx_col)}{used_pct:.0f}%{RESET}"
+        tokens_s = (
+            f"{fg(*C.OVERLAY2)}{fmt_tokens(used_tokens)}"
+            f"{fg(*C.SURFACE2)}/{RESET}"
+            f"{fg(*C.OVERLAY1)}{fmt_tokens(ctx_size)}{RESET}"
+        )
+        left.append(f"{pct_s} {bar_s} {tokens_s}")
+
+    # Turn count + session cost
+    show_turns = show(cfg, "turns")
+    show_sess_cost = show(cfg, "session_cost")
+    if show_turns or show_sess_cost:
+        turns_s = (
+            f"{fg(*turns_color(turns))}{turns}t{RESET}" if (show_turns and turns) else ""
+        )
+        # Hidden at zero — some plans don't report a session cost at all, and a
+        # permanent $0.0 next to real daily totals reads as broken.
+        sess_s = (
+            fmt_cost(
+                session_cost, scale=cfg.get("session_cost_scale", SESSION_COST_SCALE)
+            )
+            if (show_sess_cost and session_cost)
+            else ""
+        )
+        combined = " ".join(p for p in (turns_s, sess_s) if p)
+        if combined:
+            left.append(combined)
+
+    if show(cfg, "usage"):
+        usage_s = render_usage_block(data, cfg, dot)
+        if usage_s:
+            left.append(usage_s)
+
+    right = []
+    if model_name and show(cfg, "model"):
+        model_str = f"{fg(*C.OVERLAY2)}{model_name}{RESET}"
+        if effort_level and show(cfg, "effort"):
+            model_str += f" {fg(*C.OVERLAY0)}{effort_level}{RESET}"
+        right.append(model_str)
+    if show(cfg, "timestamp"):
+        last_dt = last_assistant_time(session_id, projects_dir, cwd)
+        if last_dt:
+            ts_s = last_dt.strftime("%H:%M")
+            right.append(f"{fg(*C.SAPPHIRE)}◷{RESET} {fg(*C.OVERLAY2)}{ts_s}{RESET}")
+
+    line1 = gap + gap.join(left)
+    if right:
+        line1 += dot + gap.join(right)
+
+    # ── Line 2 ────────────────────────────────────────────────────────────────
+    # Path cluster joined by `gap`; cost cluster joined by `dot`; the two
+    # clusters joined by `dot`.
+    path_parts: list[str] = []
+    if show(cfg, "cwd"):
+        abbrev = abbreviate(cwd)
+        path_parts.append(osc8_link(f"file://{cwd}", f"{fg(*C.BLUE)}{abbrev}{RESET}"))
+    if show(cfg, "branch"):
+        branch = git_branch(cwd)
+        if branch:
+            path_parts.append(f"{fg(*C.SAPPHIRE)}⎇ {branch}{RESET}")
+
+    cost_parts: list[str] = []
+    cumul_scale = cfg.get("cumulative_cost_scale", CUMULATIVE_COST_SCALE)
+    if show(cfg, "daily_cost"):
+        cost_parts.append(
+            f"{fg(*C.OVERLAY1)}Σ{RESET} {fmt_cost(daily_cost, scale=cumul_scale)}"
+            f"{fg(*C.SURFACE2)}·day{RESET}"
+        )
+    if window and show(cfg, "window_cost"):
+        if window == "billing":
+            win_label = datetime.now().strftime("%b")
+        else:
+            win_label = {"week": "wk", "month": "mo"}.get(window, window)
+        cost_parts.append(
+            f"{fg(*C.OVERLAY1)}Σ{RESET} {fmt_cost(cumul_cost, scale=cumul_scale)}"
+            f"{fg(*C.SURFACE2)}·{win_label}{RESET}"
+        )
+
+    line2_clusters = []
+    if path_parts:
+        line2_clusters.append(gap.join(path_parts))
+    if cost_parts:
+        line2_clusters.append(dot.join(cost_parts))
+    line2 = gap + dot.join(line2_clusters) if line2_clusters else ""
+
+    print(line1)
+    print(line2)
+
+
+if __name__ == "__main__":
+    main()
