@@ -31,12 +31,12 @@ Live context, cost, and session timing in your Claude Code statusline.
 
 Ask Claude Code to do it:
 
-> Install the statusline from https://github.com/YOUR-ORG/devx-statusline
+> Install the statusline from https://github.com/andresthor/devx-statusline
 
 Or do it by hand — copy the folder and point Claude Code at it:
 
 ```bash
-git clone https://github.com/YOUR-ORG/devx-statusline
+git clone https://github.com/andresthor/devx-statusline
 cp -R devx-statusline/statusline ~/.claude/hooks/devx-statusline
 ```
 
@@ -146,4 +146,4 @@ Remove the `statusLine` block from `~/.claude/settings.json` and delete
 
 ## License
 
-MIT
+MIT — see [LICENSE](LICENSE).
