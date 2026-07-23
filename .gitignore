@@ -7,6 +7,3 @@ __pycache__/
 
 # Local config (per-machine, not checked in)
 statusline/config.toml
-
-# Captured statusline payloads (may contain internal repo names/paths)
-debug-payload.json
