@@ -263,13 +263,17 @@ def cumulative_cost(
 _turns_cache: dict[str, tuple[int, int]] = {}  # path -> (mtime_ns, count)
 
 
-def _transcript_path(session_id: str, projects_dir: Path, cwd: str) -> Path:
-    """Claude Code stores transcripts under a slugified copy of the cwd."""
+def transcript_for(session_id: str, projects_dir: Path, cwd: str) -> Path:
+    """Reconstruct a transcript path from a slugified cwd.
+
+    Only a fallback — prefer the ``transcript_path`` the statusline payload
+    provides, which is authoritative and points at the right config directory.
+    """
     slug = cwd.replace("/", "-").replace(".", "-")
     return projects_dir / slug / f"{session_id}.jsonl"
 
 
-def session_turns(session_id: str, projects_dir: Path, cwd: str) -> int:
+def session_turns(path: Path | None) -> int:
     """Count human turns on the active conversation path.
 
     Follows the parentUuid chain backwards from the last entry to find only
@@ -277,9 +281,8 @@ def session_turns(session_id: str, projects_dir: Path, cwd: str) -> int:
     A turn is a ``type: "user"`` entry whose ``message.content`` is a plain
     string (real human input), excluding tool results and meta injections.
     """
-    if not session_id:
+    if not path:
         return 0
-    path = _transcript_path(session_id, projects_dir, cwd)
     try:
         mtime_ns = path.stat().st_mtime_ns
     except OSError:
@@ -327,9 +330,7 @@ def session_turns(session_id: str, projects_dir: Path, cwd: str) -> int:
     return count
 
 
-def last_assistant_time(
-    session_id: str, projects_dir: Path, cwd: str
-) -> datetime | None:
+def last_assistant_time(path: Path | None) -> datetime | None:
     """Local-time completion of the most recent assistant message.
 
     Returns the ``timestamp`` of the last ``type: "assistant"`` entry in the
@@ -337,9 +338,8 @@ def last_assistant_time(
     from its UTC ISO8601 form to local time. ``None`` if the transcript is
     missing or holds no assistant entry.
     """
-    if not session_id:
+    if not path:
         return None
-    path = _transcript_path(session_id, projects_dir, cwd)
     last_ts = ""
     try:
         with open(path) as f:

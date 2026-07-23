@@ -26,6 +26,7 @@ try:
         is_known_model,
         last_assistant_time,
         session_turns,
+        transcript_for,
     )
 except ImportError:
     from costs import (
@@ -34,6 +35,7 @@ except ImportError:
         is_known_model,
         last_assistant_time,
         session_turns,
+        transcript_for,
     )
 
 
@@ -481,8 +483,19 @@ def main():
     cwd = data.get("workspace", {}).get("current_dir", os.getcwd())
 
     cfg = load_config()
-    projects_dir = CLAUDE_DIR / "projects"
     us_residency = bool(cfg.get("us_residency", False))
+
+    # Locate the session logs from the transcript path Claude Code hands us.
+    # Deriving the projects dir from it keeps a statusline pointed at the
+    # account it is actually running under, even when several config
+    # directories exist and CLAUDE_CONFIG_DIR isn't set in this subprocess.
+    raw_transcript = data.get("transcript_path", "")
+    if raw_transcript:
+        transcript = Path(raw_transcript)
+        projects_dir = transcript.parent.parent
+    else:
+        projects_dir = CLAUDE_DIR / "projects"
+        transcript = transcript_for(session_id, projects_dir, cwd)
 
     # Today's cost, from a configurable reset hour
     day_start_hour = int(cfg.get("day_start_hour", 0))
@@ -491,7 +504,7 @@ def main():
     if day_cutoff > now:
         day_cutoff -= timedelta(days=1)
     daily_cost = cumulative_cost(day_cutoff, projects_dir, us_residency)
-    turns = session_turns(session_id, projects_dir, cwd)
+    turns = session_turns(transcript)
 
     # Longer cumulative window alongside it
     window = cfg.get("cost_window", "month")
@@ -562,7 +575,7 @@ def main():
             model_str += f" {fg(*C.OVERLAY0)}{effort_level}{RESET}"
         right.append(model_str)
     if show(cfg, "timestamp"):
-        last_dt = last_assistant_time(session_id, projects_dir, cwd)
+        last_dt = last_assistant_time(transcript)
         if last_dt:
             ts_s = last_dt.strftime("%H:%M")
             right.append(f"{fg(*C.SAPPHIRE)}◷{RESET} {fg(*C.OVERLAY2)}{ts_s}{RESET}")
