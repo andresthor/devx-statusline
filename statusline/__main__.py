@@ -471,10 +471,17 @@ def main():
         data = {}
 
     ctx = data.get("context_window", {})
-    used_pct = float(ctx.get("used_percentage", 0))
     ctx_size = int(ctx.get("context_window_size", 200000))
-    # True context consumption across all token types
-    used_tokens = int(used_pct / 100 * ctx_size)
+    # total_input_tokens is the exact context occupancy across all token types.
+    # used_percentage is rounded to a whole percent, which is a 10k-token
+    # quantum at a 1M window — too coarse to derive a token count from.
+    exact_tokens = ctx.get("total_input_tokens")
+    if exact_tokens:
+        used_tokens = int(exact_tokens)
+        used_pct = (used_tokens / ctx_size * 100) if ctx_size else 0.0
+    else:
+        used_pct = float(ctx.get("used_percentage", 0))
+        used_tokens = int(used_pct / 100 * ctx_size)
     session_cost = float(data.get("cost", {}).get("total_cost_usd", 0.0))
     session_id = data.get("session_id", "")
     model_id = data.get("model", {}).get("id", "")
