@@ -616,6 +616,9 @@ def main():
         if effort_level and show(cfg, "effort"):
             model_str += f" {fg(*C.OVERLAY0)}{effort_level}{RESET}"
         right.append(model_str)
+    instance_label = text(cfg.get("instance_label"))
+    if instance_label and show(cfg, "instance_label"):
+        right.append(f"{fg(*C.CLAUDE_ORANGE)}{instance_label}{RESET}")
     if show(cfg, "timestamp"):
         last_dt = last_assistant_time(transcript)
         if last_dt:

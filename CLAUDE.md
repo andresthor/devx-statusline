@@ -32,6 +32,23 @@ about. Only create one if they ask for a specific change.
 Tell the user to start a new session — the statusline does not appear in the
 session that installed it.
 
+Then mention, in a sentence or two, that nothing needs configuring but a few
+things can be. Keep it to the ones a first-time user actually reacts to:
+
+- `instance_label` — a short label shown in orange on line 1. Lead with this
+  one. If they run two Claude Code accounts, a personal and a work one, a
+  different label in each config makes every window self-identifying. Unset by
+  default, so it costs nothing to skip.
+- `cost_window` — the second total on line 2. `"month"` (default), `"week"`,
+  `"billing"`, or `""` to hide it.
+- `day_start_hour` — when the daily counter resets. `6` makes late-night work
+  count as the previous day.
+- `[components]` — switches to hide any single element.
+
+Say the rest is documented in `config.example.toml`, and that they can just ask
+Claude Code to change a setting rather than editing TOML themselves. Don't
+enumerate the full option list — that is what the example file is for.
+
 ## Verifying it works
 
 The script reads one JSON object on stdin and prints two lines. To check an
@@ -105,7 +122,7 @@ Keep these in mind before adding anything:
 ## Layout
 
 ```
-Line 1:  [⚠]  [context]  [turns $session]  [usage or duration]  • [model effort]  [◷ last reply]
+Line 1:  [⚠]  [context]  [turns $session]  [usage or duration]  • [model effort]  [label]  [◷ last reply]
 Line 2:  [cwd]  [branch]  • [Σ today]  • [Σ window]
 ```
 

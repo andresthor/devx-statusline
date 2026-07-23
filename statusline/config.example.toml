@@ -8,6 +8,14 @@
 # to the script wins if both exist.
 
 
+# ── Identity ─────────────────────────────────────────────────────────────────
+
+# A short label shown in orange on line 1. Useful when you run more than one
+# Claude Code account — set a different label in each account's config so you
+# can tell at a glance which one a window belongs to. Off when unset.
+# instance_label = "work"
+
+
 # ── Cost ─────────────────────────────────────────────────────────────────────
 # Costs are calculated from Claude Code's own session logs in ~/.claude/projects.
 # Nothing is sent anywhere.
@@ -64,6 +72,7 @@
 # usage = true          # plan usage bars, or session duration (line 1)
 # model = true          # model name (line 1, right)
 # effort = true         # reasoning effort next to the model name (line 1, right)
+# instance_label = true # the orange label set above (line 1, right)
 # timestamp = true      # ◷ time of Claude's last reply (line 1, far right)
 # cwd = true            # current directory (line 2)
 # branch = true         # git branch (line 2)

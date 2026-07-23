@@ -3,7 +3,7 @@
 Live context, cost, and session timing in your Claude Code statusline.
 
 ```
-  18% ◼◼◼◼◻◻ ◻◻◻◻ 185k/1M  12t $4.2  ◷ ══─── 1:22 • ◉ ══─── 13m • Opus 4.8 high • ◷ 14:07
+  18% ◼◼◼◼◻◻ ◻◻◻◻ 185k/1M  12t $4.2  ◷ ══─── 1:22 • ◉ ══─── 13m • Opus 4.8 high  work  ◷ 14:07
   ~/projects/my-app  ⎇ main • Σ $19.1·day • Σ $284.0·mo
 ```
 
@@ -20,6 +20,8 @@ Live context, cost, and session timing in your Claude Code statusline.
   billing-period window
 - **Works on plans without published usage limits** — falls back to wall-clock
   and API-time bars for the current session
+- **Per-account labels** — run a personal and a work account side by side and
+  tell their windows apart at a glance
 - **Never raises** — a malformed payload drops one element, it doesn't replace
   your statusline with a traceback
 - **Python 3.11+, standard library only** — no dependencies, no build step, no
@@ -65,7 +67,13 @@ file to create — everything has a working default.
 | `◷ ══─── 1:22` | How long the session has been open (wall clock). |
 | `◉ ══─── 13m` | How much of that was spent waiting on Claude. |
 | `Opus 4.8 high` | The model, and its reasoning effort level. |
+| `work` | Your label for this account, in orange. Off unless you set one. |
 | `◷ 14:07` | When Claude last replied. |
+
+**The label is for running more than one account.** If you have a personal
+Claude Code account and a work one, give each a different `instance_label` and
+every window tells you which is which. With one account, leave it unset and
+nothing shows.
 
 On plans that publish usage limits, the two duration bars are replaced by your
 actual limit usage — a 5-hour window and a 7-day window, each with a percentage.
@@ -116,6 +124,7 @@ The most likely things to want:
 
 | Setting | Default | What it does |
 | --- | --- | --- |
+| `instance_label` | unset | Short orange label on line 1. Set a different one per account to tell them apart. |
 | `cost_window` | `"month"` | The second total on line 2. `"month"`, `"week"`, `"billing"`, or `""` to hide it. |
 | `day_start_hour` | `0` | Hour the daily counter resets. Set to `6` so late-night work counts as the previous day. |
 | `cumulative_cost_scale` | `100.0` | Dollar amount where the line-2 totals turn fully red. |
@@ -126,7 +135,7 @@ Every option is documented inline in `config.example.toml`.
 ## Layout
 
 ```
-Line 1:  [⚠]  [context]  [turns $session]  [usage or duration]  • [model effort]  [◷ last reply]
+Line 1:  [⚠]  [context]  [turns $session]  [usage or duration]  • [model effort]  [label]  [◷ last reply]
 Line 2:  [cwd]  [branch]  • [Σ today]  • [Σ window]
 ```
 
