@@ -1,15 +1,29 @@
 # devx-statusline
 
-A two-line statusline for Claude Code. It replaces the default single line with
-a live read on how much context you have left, what the session is costing, how
-long it's been running, and where you are.
+Live context, cost, and session timing in your Claude Code statusline.
 
 ```
   18% ◼◼◼◼◻◻ ◻◻◻◻ 185k/1M  12t $4.2  ◷ ══─── 1:22 • ◉ ══─── 13m • Opus 4.8 high • ◷ 14:07
   ~/projects/my-app  ⎇ main • Σ $19.1·day • Σ $284.0·mo
 ```
 
-Python 3.11+. No dependencies, no network calls, no build step.
+## Features
+
+- **Two lines instead of one** — session state on top, location and spend below
+- **Context bar that splits at 256k** on 1M-token models, so a normal session
+  moves the bar instead of sitting at one filled block all day
+- **Costs computed locally** from Claude Code's own session logs — no network
+  calls, ever
+- **11 models in the built-in price table**, with cache and fast-mode rates
+  derived automatically from each base rate
+- **Three cost horizons** — this session, today, and a rolling 30-day, 7-day, or
+  billing-period window
+- **Works on plans without published usage limits** — falls back to wall-clock
+  and API-time bars for the current session
+- **Never raises** — a malformed payload drops one element, it doesn't replace
+  your statusline with a traceback
+- **Python 3.11+, standard library only** — no dependencies, no build step, no
+  Nerd Font
 
 ## Install
 
@@ -57,12 +71,6 @@ On plans that publish usage limits, the two duration bars are replaced by your
 actual limit usage — a 5-hour window and a 7-day window, each with a percentage.
 On plans without published limits (enterprise, typically) you get the session
 duration bars shown above.
-
-**The context bar has two halves on 1M-token models.** Six blocks cover the
-first 256k, where nearly every session lives, and four cover the remaining
-overflow. Without that split, a normal session would sit at one filled block
-all day and tell you nothing. Models with smaller context windows get a plain
-eight-block bar.
 
 **Line 2 — where you are and what you're spending.**
 

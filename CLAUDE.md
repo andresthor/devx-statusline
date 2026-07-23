@@ -1,4 +1,4 @@
-# devx-statusline — notes for Claude Code
+# devx-statusline
 
 A statusline script for Claude Code. Two files do the work: `statusline/__main__.py`
 renders, `statusline/costs.py` reads Claude Code's session logs and prices them.
