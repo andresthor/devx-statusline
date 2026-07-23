@@ -65,6 +65,34 @@ def show(cfg: dict, name: str) -> bool:
     return cfg.get("components", {}).get(name, True)
 
 
+def num(value, default, cast=int):
+    """Coerce a payload value to a number, falling back on anything unexpected.
+
+    Payload fields are read defensively so a renamed, retyped, or missing
+    field degrades that one element instead of replacing the whole statusline
+    with a traceback.
+    """
+    try:
+        return cast(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def text(value, default: str = "") -> str:
+    """Coerce a payload value to a string. See ``num`` for the rationale."""
+    return value if isinstance(value, str) else default
+
+
+def sub(data: dict, key: str) -> dict:
+    """A nested payload object, or an empty dict if absent or not an object.
+
+    ``data.get(key, {})`` returns None when the key is present but null, which
+    then raises on the next lookup. See ``num`` for the rationale.
+    """
+    value = data.get(key)
+    return value if isinstance(value, dict) else {}
+
+
 # ── Catppuccin Mocha palette ──────────────────────────────────────────────────
 
 
@@ -425,35 +453,35 @@ def render_usage_block(data: dict, cfg: dict, dot: str) -> str:
     `rate_limits`, so there is nothing to count down. Those fall through to
     wall-clock and API-time bars for the current session instead.
     """
-    rate_limits = data.get("rate_limits", {})
-    five_hour = rate_limits.get("five_hour", {})
-    seven_day = rate_limits.get("seven_day", {})
+    rate_limits = sub(data, "rate_limits")
+    five_hour = sub(rate_limits, "five_hour")
+    seven_day = sub(rate_limits, "seven_day")
 
     parts = []
     if five_hour:
-        pct = round(five_hour.get("used_percentage", 0))
-        pie = time_pie(int(five_hour.get("resets_at", 0)), 5 * 3600)
+        pct = num(five_hour.get("used_percentage"), 0, float)
+        pie = time_pie(num(five_hour.get("resets_at"), 0), 5 * 3600)
         parts.append(
             f"{fg(*C.GREEN)}{pie}{RESET} "
-            f"{fg(*usage_color(pct))}{usage_bar(pct)} {pct}%{RESET}"
+            f"{fg(*usage_color(pct))}{usage_bar(pct)} {pct:.0f}%{RESET}"
         )
     if seven_day:
-        pct = round(seven_day.get("used_percentage", 0))
+        pct = num(seven_day.get("used_percentage"), 0, float)
         parts.append(
             f"{fg(*C.YELLOW)}7d{RESET} "
-            f"{fg(*usage_color(pct))}{usage_bar(pct)} {pct}%{RESET}"
+            f"{fg(*usage_color(pct))}{usage_bar(pct)} {pct:.0f}%{RESET}"
         )
     if parts:
         return dot.join(parts)
 
-    cost_data = data.get("cost", {})
-    wall_ms = int(cost_data.get("total_duration_ms", 0))
-    api_ms = int(cost_data.get("total_api_duration_ms", 0))
+    cost_data = sub(data, "cost")
+    wall_ms = num(cost_data.get("total_duration_ms"), 0)
+    api_ms = num(cost_data.get("total_api_duration_ms"), 0)
     if wall_ms <= 0:
         return ""
 
-    wall_scale = int(cfg.get("session_wall_scale_seconds", SESSION_WALL_SCALE_SEC))
-    api_scale = int(cfg.get("session_api_scale_seconds", SESSION_API_SCALE_SEC))
+    wall_scale = num(cfg.get("session_wall_scale_seconds"), SESSION_WALL_SCALE_SEC)
+    api_scale = num(cfg.get("session_api_scale_seconds"), SESSION_API_SCALE_SEC)
     wall_pct = min(100.0, wall_ms / 1000 / wall_scale * 100)
     api_pct = min(100.0, api_ms / 1000 / api_scale * 100)
     return (
@@ -469,25 +497,28 @@ def main():
         data = json.load(sys.stdin)
     except Exception:
         data = {}
+    if not isinstance(data, dict):
+        data = {}
 
-    ctx = data.get("context_window", {})
-    ctx_size = int(ctx.get("context_window_size", 200000))
+    ctx = sub(data, "context_window")
+    ctx_size = num(ctx.get("context_window_size"), 200000)
     # total_input_tokens is the exact context occupancy across all token types.
     # used_percentage is rounded to a whole percent, which is a 10k-token
     # quantum at a 1M window — too coarse to derive a token count from.
-    exact_tokens = ctx.get("total_input_tokens")
-    if exact_tokens:
-        used_tokens = int(exact_tokens)
-        used_pct = (used_tokens / ctx_size * 100) if ctx_size else 0.0
+    # Older builds send only the percentage, so keep deriving when it's absent.
+    exact_tokens = num(ctx.get("total_input_tokens"), 0)
+    if exact_tokens and ctx_size:
+        used_tokens = exact_tokens
+        used_pct = used_tokens / ctx_size * 100
     else:
-        used_pct = float(ctx.get("used_percentage", 0))
+        used_pct = num(ctx.get("used_percentage"), 0, float)
         used_tokens = int(used_pct / 100 * ctx_size)
-    session_cost = float(data.get("cost", {}).get("total_cost_usd", 0.0))
-    session_id = data.get("session_id", "")
-    model_id = data.get("model", {}).get("id", "")
-    model_name = data.get("model", {}).get("display_name", "").split("(")[0].strip()
-    effort_level = data.get("effort", {}).get("level", "")
-    cwd = data.get("workspace", {}).get("current_dir", os.getcwd())
+    session_cost = num(sub(data, "cost").get("total_cost_usd"), 0.0, float)
+    session_id = text(data.get("session_id"))
+    model_id = text(sub(data, "model").get("id"))
+    model_name = text(sub(data, "model").get("display_name")).split("(")[0].strip()
+    effort_level = text(sub(data, "effort").get("level"))
+    cwd = text(sub(data, "workspace").get("current_dir"), os.getcwd())
 
     cfg = load_config()
     us_residency = bool(cfg.get("us_residency", False))
@@ -496,13 +527,17 @@ def main():
     # Deriving the projects dir from it keeps a statusline pointed at the
     # account it is actually running under, even when several config
     # directories exist and CLAUDE_CONFIG_DIR isn't set in this subprocess.
-    raw_transcript = data.get("transcript_path", "")
-    if raw_transcript:
-        transcript = Path(raw_transcript)
+    raw_transcript = text(data.get("transcript_path"))
+    transcript = Path(raw_transcript) if raw_transcript else None
+    # Layout is <projects>/<slugified-cwd>/<session>.jsonl, so the projects
+    # root is two levels up. Only trust that if it resolves to a real
+    # directory — otherwise fall back to the conventional location.
+    if transcript is not None and transcript.parent.parent.is_dir():
         projects_dir = transcript.parent.parent
     else:
         projects_dir = CLAUDE_DIR / "projects"
-        transcript = transcript_for(session_id, projects_dir, cwd)
+        if transcript is None:
+            transcript = transcript_for(session_id, projects_dir, cwd)
 
     # Today's cost, from a configurable reset hour
     day_start_hour = int(cfg.get("day_start_hour", 0))
