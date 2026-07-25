@@ -55,7 +55,7 @@ The script reads one JSON object on stdin and prints two lines. To check an
 install without starting a session:
 
 ```bash
-echo '{"model":{"id":"claude-opus-4-8","display_name":"Opus 4.8"},
+echo '{"model":{"id":"claude-opus-5","display_name":"Opus 5"},
        "context_window":{"used_percentage":18,"context_window_size":1000000},
        "cost":{"total_cost_usd":4.2,"total_duration_ms":4920000,"total_api_duration_ms":810000},
        "workspace":{"current_dir":"'"$PWD"'"}}' | python3 ~/.claude/hooks/devx-statusline

@@ -3,7 +3,7 @@
 Live context, cost, and session timing in your Claude Code statusline.
 
 ```
-  18% ◼◼◼◼◻◻ ◻◻◻◻ 185k/1M  12t $4.2  ◷ ══─── 1:22 • ◉ ══─── 13m • Opus 4.8 high  work  ◷ 14:07
+  18% ◼◼◼◼◻◻ ◻◻◻◻ 185k/1M  12t $4.2  ◷ ══─── 1:22 • ◉ ══─── 13m • Opus 5 high  work  ◷ 14:07
   ~/projects/my-app  ⎇ main • Σ $19.1·day • Σ $284.0·mo
 ```
 
@@ -66,7 +66,7 @@ file to create — everything has a working default.
 | `$4.2` | What this session has cost so far. |
 | `◷ ══─── 1:22` | How long the session has been open (wall clock). |
 | `◉ ══─── 13m` | How much of that was spent waiting on Claude. |
-| `Opus 4.8 high` | The model, and its reasoning effort level. |
+| `Opus 5 high` | The model, and its reasoning effort level. |
 | `work` | Your label for this account, in orange. Off unless you set one. |
 | `◷ 14:07` | When Claude last replied. |
 

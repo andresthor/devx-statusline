@@ -27,6 +27,7 @@ _default_projects_dir = Path.home() / ".claude" / "projects"
 _BASE_PRICING: dict[str, tuple[float, float]] = {
     "claude-fable-5": (10.0, 50.0),
     "claude-mythos-5": (10.0, 50.0),
+    "claude-opus-5": (5.0, 25.0),
     "claude-opus-4-8": (5.0, 25.0),
     "claude-opus-4-7": (5.0, 25.0),
     "claude-opus-4-6": (5.0, 25.0),
@@ -41,13 +42,15 @@ _BASE_PRICING: dict[str, tuple[float, float]] = {
 
 # Fallback for unknown models — current Opus base. The ⚠ indicator fires when
 # this path is taken, so the guess is visible rather than silent.
-_FALLBACK_BASE = _BASE_PRICING["claude-opus-4-8"]
+_FALLBACK_BASE = _BASE_PRICING["claude-opus-5"]
 
 # Fast mode (Opus `/fast`, usage.speed == "fast") — premium (input, output) per
 # million; caching multipliers stack on top of these. Models absent here have no
 # fast tier and bill at standard base.
 _FAST_PRICING: dict[str, tuple[float, float]] = {
+    "claude-opus-5": (10.0, 50.0),
     "claude-opus-4-8": (10.0, 50.0),
+    # 4.7 fast mode was withdrawn; kept so older sessions still price correctly.
     "claude-opus-4-7": (30.0, 150.0),
 }
 
@@ -64,6 +67,7 @@ _US_RESIDENCY_MULT = 1.1
 _RESIDENCY_ELIGIBLE = (
     "claude-fable-5",
     "claude-mythos-5",
+    "claude-opus-5",
     "claude-opus-4-8",
     "claude-opus-4-7",
     "claude-opus-4-6",
