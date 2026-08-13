@@ -11,6 +11,7 @@ re-parsed on each render.
 from __future__ import annotations
 
 import json
+import re
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -24,10 +25,19 @@ _default_projects_dir = Path.home() / ".claude" / "projects"
 #   cache read = 0.10x  ·  5-min write = 1.25x  ·  1-hour write = 2.0x  (of base input)
 # Claude Code writes almost exclusively to the 1-hour cache tier.
 
+# Corti models are priced separately, from Corti's own model sheet rather than
+# the Anthropic page above. Their cached rate is 0.10x base input, which the
+# shared multiplier below already gets right. corti-s1-tiny is deliberately
+# absent: it is unpriced upstream, so it should surface the warning.
 _BASE_PRICING: dict[str, tuple[float, float]] = {
+    "corti-s1-ultra-instant-beta": (4.0, 16.0),
+    "corti-s1-ultra-instant": (4.0, 16.0),
+    "corti-s1-ultra-beta": (4.0, 16.0),
+    "corti-s1-ultra": (4.0, 16.0),
     "corti-s1-mini-instant": (1.0, 4.0),
     "corti-s1-mini": (1.0, 4.0),
     "corti-s1-instant": (2.0, 8.0),
+    "corti-s1-beta": (2.0, 8.0),
     "corti-s1": (2.0, 8.0),
     "claude-fable-5": (10.0, 50.0),
     "claude-mythos-5": (10.0, 50.0),
@@ -122,9 +132,17 @@ def due_watch_dates(
     return due
 
 
+# What may follow a table key and still be the same model: a date/version stamp
+# (-20251001) or a context-variant tag ([1m]). A bare word suffix is a different
+# model — corti-s1-ultra is not corti-s1 — and must miss so the warning fires.
+_SAME_MODEL_SUFFIX = re.compile(r"^(-\d|\[)")
+
+
 def _prefix_lookup(table: dict[str, tuple[float, float]], model_id: str):
     for prefix, rates in table.items():
-        if model_id.startswith(prefix):
+        if model_id == prefix:
+            return rates
+        if model_id.startswith(prefix) and _SAME_MODEL_SUFFIX.match(model_id[len(prefix) :]):
             return rates
     return None
 
