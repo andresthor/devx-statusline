@@ -25,6 +25,7 @@ try:
         due_watch_dates,
         is_known_model,
         last_assistant_time,
+        last_context_tokens,
         session_turns,
         transcript_for,
     )
@@ -34,6 +35,7 @@ except ImportError:
         due_watch_dates,
         is_known_model,
         last_assistant_time,
+        last_context_tokens,
         session_turns,
         transcript_for,
     )
@@ -501,7 +503,12 @@ def main():
         data = {}
 
     ctx = sub(data, "context_window")
-    ctx_size = num(ctx.get("context_window_size"), 200000)
+    # Payload first. When it is absent the window is still knowable: Claude Code
+    # exports CLAUDE_CODE_MAX_CONTEXT_TOKENS to the subprocesses it spawns, and
+    # for a proxied model that is the only place its real window appears.
+    ctx_size = num(ctx.get("context_window_size"), 0)
+    if not ctx_size:
+        ctx_size = num(os.environ.get("CLAUDE_CODE_MAX_CONTEXT_TOKENS"), 200000)
     # total_input_tokens is the exact context occupancy across all token types.
     # used_percentage is rounded to a whole percent, which is a 10k-token
     # quantum at a 1M window — too coarse to derive a token count from.
@@ -538,6 +545,15 @@ def main():
         projects_dir = CLAUDE_DIR / "projects"
         if transcript is None:
             transcript = transcript_for(session_id, projects_dir, cwd)
+
+    # No payload occupancy means Claude Code didn't recognise the model, not
+    # that the context is empty — recover the figure from the transcript so the
+    # bar reflects real usage instead of sitting at zero all session.
+    if not exact_tokens:
+        recovered = last_context_tokens(transcript)
+        if recovered:
+            used_tokens = recovered
+            used_pct = used_tokens / ctx_size * 100 if ctx_size else 0.0
 
     # Today's cost, from a configurable reset hour
     day_start_hour = int(cfg.get("day_start_hour", 0))

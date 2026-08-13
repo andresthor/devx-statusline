@@ -338,6 +338,61 @@ def session_turns(path: Path | None) -> int:
     return count
 
 
+_context_cache: dict[str, tuple[int, int]] = {}  # path -> (mtime_ns, tokens)
+
+
+def last_context_tokens(path: Path | None) -> int:
+    """Context occupancy taken from the newest assistant message.
+
+    Claude Code omits the ``context_window`` payload block for models it does
+    not recognise — anything reached through a proxy, say — which leaves no
+    occupancy to draw the bar from. The transcript still records per-message
+    usage, and the three input categories sum to the whole prompt, so the
+    newest assistant entry carries the figure the payload would have. Returns
+    0 when the transcript is missing or holds no usage.
+    """
+    if not path:
+        return 0
+    try:
+        mtime_ns = path.stat().st_mtime_ns
+    except OSError:
+        return 0
+    cache_key = str(path)
+    cached = _context_cache.get(cache_key)
+    if cached and cached[0] == mtime_ns:
+        return cached[1]
+
+    tokens = 0
+    try:
+        with open(path) as f:
+            for line in f:
+                try:
+                    d = json.loads(line)
+                except (json.JSONDecodeError, ValueError):
+                    continue
+                # Subagents run their own context; theirs is not this thread's.
+                if d.get("type") != "assistant" or d.get("isSidechain"):
+                    continue
+                usage = (d.get("message") or {}).get("usage")
+                if not isinstance(usage, dict):
+                    continue
+                total = sum(
+                    usage.get(k) or 0
+                    for k in (
+                        "input_tokens",
+                        "cache_read_input_tokens",
+                        "cache_creation_input_tokens",
+                    )
+                )
+                if total:
+                    tokens = total
+    except OSError:
+        return 0
+
+    _context_cache[cache_key] = (mtime_ns, tokens)
+    return tokens
+
+
 def last_assistant_time(path: Path | None) -> datetime | None:
     """Local-time completion of the most recent assistant message.
 
