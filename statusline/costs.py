@@ -25,6 +25,10 @@ _default_projects_dir = Path.home() / ".claude" / "projects"
 # Claude Code writes almost exclusively to the 1-hour cache tier.
 
 _BASE_PRICING: dict[str, tuple[float, float]] = {
+    "corti-s1-mini-instant": (1.0, 4.0),
+    "corti-s1-mini": (1.0, 4.0),
+    "corti-s1-instant": (2.0, 8.0),
+    "corti-s1": (2.0, 8.0),
     "claude-fable-5": (10.0, 50.0),
     "claude-mythos-5": (10.0, 50.0),
     "claude-opus-5": (5.0, 25.0),
