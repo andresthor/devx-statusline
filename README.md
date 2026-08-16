@@ -14,14 +14,16 @@ Live context, cost, and session timing in your Claude Code statusline.
   moves the bar instead of sitting at one filled block all day
 - **Costs computed locally** from Claude Code's own session logs — no network
   calls, ever
-- **11 models in the built-in price table**, with cache and fast-mode rates
-  derived automatically from each base rate
+- **Per-model pricing** with cache and fast-mode rates derived automatically
+  from each base rate — a `⚠` appears when a model isn't in the table yet
 - **Three cost horizons** — this session, today, and a rolling 30-day, 7-day, or
   billing-period window
 - **Works on plans without published usage limits** — falls back to wall-clock
   and API-time bars for the current session
 - **Per-account labels** — run a personal and a work account side by side and
   tell their windows apart at a glance
+- **PR and worktree awareness** — the current branch's PR review state (with a
+  clickable link) and the worktree name appear on line 2 when they apply
 - **Never raises** — a malformed payload drops one element, it doesn't replace
   your statusline with a traceback
 - **Python 3.11+, standard library only** — no dependencies, no build step, no
@@ -86,6 +88,8 @@ duration bars shown above.
 | --- | --- |
 | `~/projects/my-app` | Working directory. Clickable in most modern terminals. |
 | `⎇ main` | Current git branch. |
+| `[fix-bug]` | Worktree name, when the session runs in one. Shown only when it differs from the branch. |
+| `✓ #1234` | The current branch's PR, with its review state. Clickable to open the PR. |
 | `Σ $19.1·day` | Everything you've spent today, across all projects. |
 | `Σ $284.0·mo` | Same, for the last 30 days. |
 
@@ -136,8 +140,18 @@ Every option is documented inline in `config.example.toml`.
 
 ```
 Line 1:  [⚠]  [context]  [turns $session]  [usage or duration]  • [model effort]  [label]  [◷ last reply]
-Line 2:  [cwd]  [branch]  • [Σ today]  • [Σ window]
+Line 2:  [cwd]  [branch]  [worktree]  [pr]  • [Σ today]  • [Σ window]
 ```
+
+The `[worktree]` and `[pr]` slots only appear when relevant — no worktree or
+open PR and line 2 stays as before. The PR glyph reflects its review state:
+
+| Glyph | State |
+| --- | --- |
+| `✓ #1234` | Approved (green) |
+| `↻ #1234` | Changes requested (peach) |
+| `⧖ #1234` | Pending review (yellow) |
+| `☐ #1234` | Draft (muted) |
 
 ## Uninstall
 

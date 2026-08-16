@@ -123,13 +123,19 @@ Keep these in mind before adding anything:
 
 ```
 Line 1:  [⚠]  [context]  [turns $session]  [usage or duration]  • [model effort]  [label]  [◷ last reply]
-Line 2:  [cwd]  [branch]  • [Σ today]  • [Σ window]
+Line 2:  [cwd]  [branch]  [worktree]  [pr]  • [Σ today]  • [Σ window]
 ```
 
 `render_usage_block()` picks between two things for the middle of line 1: the
 plan's published usage limits when the payload has `rate_limits`, and
 wall-clock plus API-time bars for the current session when it doesn't.
 Enterprise plans generally fall into the second case.
+
+The `[worktree]` and `[pr]` slots on line 2 appear only when the payload reports
+them — a bracketed worktree name when the session runs in a linked worktree,
+and the current branch's PR review state (linked to its URL) otherwise. Both
+degrade to nothing when absent, so line 2 stays uncluttered in a plain repo
+with no PR.
 
 ## Config
 
