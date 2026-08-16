@@ -430,6 +430,84 @@ def osc8_link(uri: str, label: str) -> str:
     return f"\033]8;;{uri}\a{label}\033]8;;\a"
 
 
+# ── Pull request ───────────────────────────────────────────────────────────────
+# Shown on line 2 when a PR exists for the current branch. The glyph carries
+# the review state; the color reinforces it. Absent (no PR / not in a repo)
+# degrades to nothing — the standard defensive-read behavior.
+
+_PR_GLYPH = {
+    "approved": "✓",
+    "changes_requested": "↻",
+    "pending": "⧖",
+    "draft": "☐",
+}
+_PR_COLOR = {
+    "approved": C.GREEN,
+    "changes_requested": C.PEACH,
+    "pending": C.YELLOW,
+    "draft": C.OVERLAY0,  # muted — a draft isn't in flight
+}
+
+
+def pr_block(data: dict) -> str:
+    """PR status for the current branch, or "" if none is reported.
+
+    The whole ``pr`` object is absent until Claude Code finds a PR for the
+    branch, and ``review_state`` can be independently absent even then. Both
+    gaps fall through to an empty string — no glyph is shown without a state.
+    """
+    pr = sub(data, "pr")
+    number = pr.get("number")
+    if not number:
+        return ""
+    url = text(pr.get("url"))
+    state = text(pr.get("review_state"))
+    glyph = _PR_GLYPH.get(state)
+    if not glyph:
+        # PR exists but no review state yet — show the number unmarked rather
+        # than inventing a state. Still clickable, still colored neutral.
+        colored = f"{fg(*C.OVERLAY2)}#{number}{RESET}"
+    else:
+        color = _PR_COLOR[state]
+        colored = f"{fg(*color)}{glyph}{RESET} {fg(*color)}#{number}{RESET}"
+    if url:
+        return osc8_link(url, colored)
+    return colored
+
+
+# ── Worktree ───────────────────────────────────────────────────────────────────
+# Shown on line 2 when the session runs in a linked git worktree. Brackets
+# carry the qualifier meaning ("the branch above is checked out here"), so no
+# glyph is used. The name is suppressed when it equals the branch — a common
+# case (`git worktree add ../fix-bug fix-bug`) where showing both is noise.
+
+def _worktree_name(data: dict) -> str:
+    """Best-effort worktree name, or "" when not in a worktree.
+
+    ``worktree.*`` (only present in --worktree sessions) carries a clean
+    ``name``. A plain ``git worktree add`` exposes only ``workspace.git_worktree``
+    (a path), so its trailing segment is used as the name. The main working
+    tree has neither and returns "".
+    """
+    wt = sub(data, "worktree")
+    name = text(wt.get("name"))
+    if name:
+        return name
+    raw = text(sub(data, "workspace").get("git_worktree"))
+    if not raw:
+        return ""
+    # git_worktree is typically a path; take the final segment as the label.
+    return os.path.basename(raw.rstrip("/")) or ""
+
+
+def worktree_block(data: dict, branch: str | None) -> str:
+    """Bracketed worktree name for line 2, or "" if none / name == branch."""
+    name = _worktree_name(data)
+    if not name or name == branch:
+        return ""
+    return f"{fg(*C.OVERLAY0)}[{name}]{RESET}"
+
+
 def git_branch(cwd: str) -> str | None:
     try:
         result = subprocess.run(
@@ -654,8 +732,20 @@ def main():
         path_parts.append(osc8_link(f"file://{cwd}", f"{fg(*C.BLUE)}{abbrev}{RESET}"))
     if show(cfg, "branch"):
         branch = git_branch(cwd)
-        if branch:
-            path_parts.append(f"{fg(*C.SAPPHIRE)}⎇ {branch}{RESET}")
+    else:
+        branch = None
+    if branch:
+        path_parts.append(f"{fg(*C.SAPPHIRE)}⎇ {branch}{RESET}")
+
+    if show(cfg, "worktree"):
+        wt = worktree_block(data, branch)
+        if wt:
+            path_parts.append(wt)
+
+    if show(cfg, "pr"):
+        pr = pr_block(data)
+        if pr:
+            path_parts.append(pr)
 
     cost_parts: list[str] = []
     cumul_scale = cfg.get("cumulative_cost_scale", CUMULATIVE_COST_SCALE)

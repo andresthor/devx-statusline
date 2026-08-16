@@ -76,5 +76,7 @@
 # timestamp = true      # ◷ time of Claude's last reply (line 1, far right)
 # cwd = true            # current directory (line 2)
 # branch = true         # git branch (line 2)
+# worktree = true       # bracketed worktree name, when in one (line 2)
+# pr = true             # PR review state for the current branch (line 2)
 # daily_cost = true     # Σ today's total (line 2)
 # window_cost = true    # Σ month/week/billing total (line 2)
