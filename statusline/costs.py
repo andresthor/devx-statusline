@@ -47,7 +47,6 @@ _BASE_PRICING: dict[str, tuple[float, float]] = {
     "claude-opus-4-6": (5.0, 25.0),
     "claude-opus-4-5": (5.0, 25.0),
     "claude-opus-4-1": (15.0, 75.0),
-    # Intro rate through 2026-08-31 ($2/$10); reverts to $3/$15 after — revisit then.
     "claude-sonnet-5": (2.0, 10.0),
     "claude-sonnet-4-6": (3.0, 15.0),
     "claude-sonnet-4-5": (3.0, 15.0),
@@ -100,9 +99,7 @@ def _residency_eligible(model_id: str) -> bool:
 # is within WATCH_LEAD_DAYS of (or past) the date.
 #
 # (ISO date, label explaining what changes)
-WATCH_DATES: list[tuple[str, str]] = [
-    ("2026-08-31", "Sonnet 5 intro pricing ends → reverts to $3/$15"),
-]
+WATCH_DATES: list[tuple[str, str]] = []
 
 WATCH_LEAD_DAYS = 14
 
