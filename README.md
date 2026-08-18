@@ -11,7 +11,9 @@ Live context, cost, and session timing in your Claude Code statusline.
 
 - **Two lines instead of one** — session state on top, location and spend below
 - **Context bar that splits at 256k** on 1M-token models, so a normal session
-  moves the bar instead of sitting at one filled block all day
+  moves the bar instead of sitting at one filled block all day; on models
+  Claude Code doesn't recognize (proxied models), occupancy is recovered from
+  the session log
 - **Costs computed locally** from Claude Code's own session logs — no network
   calls, ever
 - **Per-model pricing** with cache and fast-mode rates derived automatically
