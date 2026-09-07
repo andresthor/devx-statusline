@@ -140,7 +140,7 @@ them — the worktree name when the session runs in a linked worktree, and the
 current branch's PR review state (linked to its URL) otherwise. Both degrade to
 nothing when absent, so line 2 stays uncluttered in a plain repo with no PR.
 The worktree name is bracketed and dimmed as a qualifier on whatever precedes
-it, and takes cwd's color, cap and slot unbracketed when nothing does.
+it, and takes the branch glyph with cwd's color, cap and slot when nothing does.
 
 ## Config
 

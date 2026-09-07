@@ -571,14 +571,15 @@ def worktree_block(
     """Worktree name for line 2, or "" if none / name == branch.
 
     ``standalone`` means nothing precedes it on line 2 to qualify, so the name
-    is the location rather than a note about one: it takes cwd's color, and its
-    cap from the caller, losing the brackets and dimming that mark it secondary.
+    is the location rather than a note about one: it takes the branch glyph and
+    cwd's color, and its cap from the caller, losing the brackets and dimming
+    that mark it secondary.
     """
     name = _worktree_name(data)
     if not name or name == branch:
         return ""
     if standalone:
-        return f"{fg(*C.BLUE)}{clip(name, limit, middle=True)}{RESET}"
+        return f"{fg(*C.BLUE)}⎇ {clip(name, limit, middle=True)}{RESET}"
     return f"{fg(*C.OVERLAY0)}[{clip(name, limit)}]{RESET}"
 
 
