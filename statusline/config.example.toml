@@ -61,6 +61,15 @@
 # session_api_scale_seconds = 1800    # 30 minutes
 
 
+# Maximum length of the three variable-width slots on line 2, so a long branch
+# name (and a worktree named after one) can't push the cost totals off screen.
+# Set 0 to turn a cap off. The path drops leading directories to keep the
+# current one readable; the branch and worktree names clip with an ellipsis.
+# cwd_max_length = 40
+# branch_max_length = 32
+# worktree_max_length = 24
+
+
 # ── Components ───────────────────────────────────────────────────────────────
 # Turn individual pieces off. Anything not listed stays on.
 
@@ -74,7 +83,8 @@
 # effort = true         # reasoning effort next to the model name (line 1, right)
 # instance_label = true # the orange label set above (line 1, right)
 # timestamp = true      # ◷ time of Claude's last reply (line 1, far right)
-# cwd = true            # current directory (line 2)
+# cwd = true            # current directory (line 2) — always hidden in a
+#                       # worktree, where the branch already names it
 # branch = true         # git branch (line 2)
 # worktree = true       # bracketed worktree name, when in one (line 2)
 # pr = true             # PR review state for the current branch (line 2)

@@ -131,6 +131,10 @@ plan's published usage limits when the payload has `rate_limits`, and
 wall-clock plus API-time bars for the current session when it doesn't.
 Enterprise plans generally fall into the second case.
 
+The `[cwd]` slot is dropped in a worktree — the directory is named after the
+branch, so both would say the same thing — which makes `_worktree_name()`
+load-bearing for more than the worktree slot itself.
+
 The `[worktree]` and `[pr]` slots on line 2 appear only when the payload reports
 them — a bracketed worktree name when the session runs in a linked worktree,
 and the current branch's PR review state (linked to its URL) otherwise. Both

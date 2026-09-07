@@ -420,9 +420,56 @@ def _cost_cutoff(window: str, cfg: dict) -> datetime | None:
 # ── Path / git ────────────────────────────────────────────────────────────────
 
 
+# Line 2 grows with the length of a branch name, and a worktree named after a
+# long branch pushes the cost totals off screen entirely. Each slot is capped
+# independently; a limit under 4 leaves no room for an ellipsis and reads as
+# "off".
+CWD_MAX_LENGTH = 40
+BRANCH_MAX_LENGTH = 32
+WORKTREE_MAX_LENGTH = 24
+
+
 def abbreviate(path: str) -> str:
     home = str(Path.home())
     return "~" + path[len(home) :] if path.startswith(home) else path
+
+
+def clip(s: str, limit: int, middle: bool = False) -> str:
+    """Shorten to `limit` characters with an ellipsis, from the end or middle.
+
+    Middle-clipping keeps the tail, where branch-derived names carry the ticket
+    id that tells two otherwise similar names apart.
+    """
+    if limit < 4 or len(s) <= limit:
+        return s
+    keep = limit - 1
+    if not middle:
+        return s[:keep] + "…"
+    head = (keep + 1) // 2
+    return s[:head] + "…" + s[len(s) - (keep - head) :]
+
+
+def shorten_path(path: str, limit: int) -> str:
+    """Drop leading path segments so the current directory stays readable.
+
+    Only the deepest segment is guaranteed; parents are kept while they fit.
+    A lone segment over the limit is clipped rather than dropped, since there
+    is nothing else left to identify the directory by.
+    """
+    if limit < 4 or len(path) <= limit:
+        return path
+    parts = path.split("/")
+    kept = [parts[-1]]
+    if len(parts[-1]) + 2 > limit:
+        # Keep the "…/" so the slot still reads as a path, unless the limit is
+        # too tight to spend two characters on it.
+        prefix = "…/" if limit >= 6 else ""
+        return prefix + clip(parts[-1], limit - len(prefix), middle=True)
+    for part in reversed(parts[:-1]):
+        if len("/".join([part, *kept])) + 2 > limit:
+            break
+        kept.insert(0, part)
+    return "…/" + "/".join(kept)
 
 
 def osc8_link(uri: str, label: str) -> str:
@@ -485,9 +532,8 @@ def _worktree_name(data: dict) -> str:
     """Best-effort worktree name, or "" when not in a worktree.
 
     ``worktree.*`` (only present in --worktree sessions) carries a clean
-    ``name``. A plain ``git worktree add`` exposes only ``workspace.git_worktree``
-    (a path), so its trailing segment is used as the name. The main working
-    tree has neither and returns "".
+    ``name``. A plain ``git worktree add`` exposes only ``workspace.git_worktree``.
+    The main working tree has neither and returns "".
     """
     wt = sub(data, "worktree")
     name = text(wt.get("name"))
@@ -496,16 +542,16 @@ def _worktree_name(data: dict) -> str:
     raw = text(sub(data, "workspace").get("git_worktree"))
     if not raw:
         return ""
-    # git_worktree is typically a path; take the final segment as the label.
+    # Documented as a name, but a path would render the whole thing on line 2.
     return os.path.basename(raw.rstrip("/")) or ""
 
 
-def worktree_block(data: dict, branch: str | None) -> str:
+def worktree_block(data: dict, branch: str | None, limit: int) -> str:
     """Bracketed worktree name for line 2, or "" if none / name == branch."""
     name = _worktree_name(data)
     if not name or name == branch:
         return ""
-    return f"{fg(*C.OVERLAY0)}[{name}]{RESET}"
+    return f"{fg(*C.OVERLAY0)}[{clip(name, limit)}]{RESET}"
 
 
 def git_branch(cwd: str) -> str | None:
@@ -727,18 +773,28 @@ def main():
     # Path cluster joined by `gap`; cost cluster joined by `dot`; the two
     # clusters joined by `dot`.
     path_parts: list[str] = []
-    if show(cfg, "cwd"):
-        abbrev = abbreviate(cwd)
+    # A worktree directory is named after its branch, so showing both spends
+    # most of line 2 saying the same thing twice.
+    in_worktree = bool(_worktree_name(data))
+    if show(cfg, "cwd") and not in_worktree:
+        abbrev = shorten_path(
+            abbreviate(cwd), num(cfg.get("cwd_max_length"), CWD_MAX_LENGTH)
+        )
         path_parts.append(osc8_link(f"file://{cwd}", f"{fg(*C.BLUE)}{abbrev}{RESET}"))
     if show(cfg, "branch"):
         branch = git_branch(cwd)
     else:
         branch = None
     if branch:
-        path_parts.append(f"{fg(*C.SAPPHIRE)}⎇ {branch}{RESET}")
+        label = clip(
+            branch, num(cfg.get("branch_max_length"), BRANCH_MAX_LENGTH), middle=True
+        )
+        path_parts.append(f"{fg(*C.SAPPHIRE)}⎇ {label}{RESET}")
 
     if show(cfg, "worktree"):
-        wt = worktree_block(data, branch)
+        wt = worktree_block(
+            data, branch, num(cfg.get("worktree_max_length"), WORKTREE_MAX_LENGTH)
+        )
         if wt:
             path_parts.append(wt)
 

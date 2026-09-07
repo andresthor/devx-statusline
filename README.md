@@ -134,6 +134,7 @@ The most likely things to want:
 | `cost_window` | `"month"` | The second total on line 2. `"month"`, `"week"`, `"billing"`, or `""` to hide it. |
 | `day_start_hour` | `0` | Hour the daily counter resets. Set to `6` so late-night work counts as the previous day. |
 | `cumulative_cost_scale` | `100.0` | Dollar amount where the line-2 totals turn fully red. |
+| `cwd_max_length` / `branch_max_length` / `worktree_max_length` | `40` / `32` / `24` | Caps on the variable-width parts of line 2, so a long branch name doesn't push the totals off screen. `0` disables. |
 | `[components]` | all on | Turn individual pieces off — see the example file for the full list. |
 
 Every option is documented inline in `config.example.toml`.
@@ -146,7 +147,10 @@ Line 2:  [cwd]  [branch]  [worktree]  [pr]  • [Σ today]  • [Σ window]
 ```
 
 The `[worktree]` and `[pr]` slots only appear when relevant — no worktree or
-open PR and line 2 stays as before. The PR glyph reflects its review state:
+open PR and line 2 stays as before. In a worktree the `[cwd]` slot is dropped:
+the directory is named after the branch, so the two would say the same thing.
+
+The PR glyph reflects its review state:
 
 | Glyph | State |
 | --- | --- |
