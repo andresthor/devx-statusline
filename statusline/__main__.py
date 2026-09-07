@@ -25,6 +25,7 @@ try:
     from .costs import (
         cumulative_cost,
         due_watch_dates,
+        flush_cache,
         is_known_model,
         last_assistant_time,
         last_context_tokens,
@@ -35,6 +36,7 @@ except ImportError:
     from costs import (
         cumulative_cost,
         due_watch_dates,
+        flush_cache,
         is_known_model,
         last_assistant_time,
         last_context_tokens,
@@ -988,6 +990,9 @@ def main():
 
     print(line1)
     print(line2)
+
+    # After the output, so a cache write can never delay what the user sees.
+    flush_cache(projects_dir, us_residency)
 
 
 if __name__ == "__main__":

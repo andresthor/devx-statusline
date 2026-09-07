@@ -107,6 +107,10 @@ reads those logs, adds up the tokens, and multiplies by the published per-model
 prices. Nothing leaves your machine, and nothing is sent to Anthropic or
 anywhere else.
 
+Parsed logs are cached in your temp directory, keyed by modification time, so
+a render only re-reads files that changed. The first render after a reboot
+rebuilds it and is slower.
+
 Two consequences worth knowing:
 
 - The totals are an **estimate**. They should track your real bill closely, but

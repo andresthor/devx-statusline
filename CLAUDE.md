@@ -110,7 +110,10 @@ Only `_FAST_PRICING` is a separate table, and only for models with a fast tier.
 Keep these in mind before adding anything:
 
 - **Runs on every render.** Anything slow shows up as terminal lag. The JSONL
-  parsing is cached by file mtime; keep it that way.
+  parsing is cached by file mtime, and mirrored to a temp-dir file because each
+  render is a fresh process — an in-process dict alone caches nothing across
+  renders. `flush_cache()` writes it after the output is printed, and only
+  files touched that run are written back, which prunes logs that aged out.
 - **Never raise.** A traceback would replace the user's statusline with an
   error. Every I/O path is already wrapped; new ones should be too.
 - **No network calls, ever.** Costs are computed locally from a static price

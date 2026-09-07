@@ -10,8 +10,11 @@ re-parsed on each render.
 
 from __future__ import annotations
 
+import hashlib
 import json
+import os
 import re
+import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -230,13 +233,78 @@ def _parse_jsonl(path: Path, us_residency: bool) -> list[_Entry]:
 
 def _get_file_entries(path: Path, mtime_ns: int, us_residency: bool) -> list[_Entry]:
     """Get entries for a file, cached by mtime."""
+    global _cache_dirty
     cache_key = (str(path), us_residency)
+    _used_paths.add(str(path))
     cached = _file_cache.get(cache_key)
     if cached and cached[0] == mtime_ns:
         return cached[1]
     entries = _parse_jsonl(path, us_residency)
     _file_cache[cache_key] = (mtime_ns, entries)
+    _cache_dirty = True
     return entries
+
+
+# ── Cross-render cache ───────────────────────────────────────────────────────
+# The dict above dies with the process, and the statusline is a fresh process on
+# every render — so without a disk mirror every render re-parses every log file
+# inside the window. Only files touched this run are written back, which prunes
+# entries for logs that have aged out of the window or been deleted.
+
+_used_paths: set[str] = set()
+_cache_dirty = False
+_cache_loaded = False
+
+
+def _disk_cache_path(projects_dir: Path) -> Path:
+    digest = hashlib.sha1(str(projects_dir).encode()).hexdigest()[:8]
+    return Path(tempfile.gettempdir()) / f"devx-statusline-costs-{digest}.json"
+
+
+def _load_disk_cache(projects_dir: Path, us_residency: bool) -> None:
+    """Seed the in-process cache from disk. Runs at most once per process."""
+    global _cache_loaded
+    if _cache_loaded:
+        return
+    _cache_loaded = True
+    try:
+        raw = json.loads(_disk_cache_path(projects_dir).read_text())
+    except (OSError, ValueError):
+        return
+    # Residency changes every rate, so entries priced under the other setting
+    # are not reusable.
+    if raw.get("residency") is not us_residency:
+        return
+    for path, entry in raw.get("files", {}).items():
+        try:
+            mtime_ns, rows = entry
+            # The dedup key is only meaningful while parsing one file, so it is
+            # not stored; readers of _Entry use the timestamp and cost.
+            _file_cache[(path, us_residency)] = (
+                mtime_ns,
+                [(ts, "", cost) for ts, cost in rows],
+            )
+        except (TypeError, ValueError):
+            continue
+
+
+def flush_cache(projects_dir: Path | None = None, us_residency: bool = False) -> None:
+    """Write the parsed-file cache back to disk, if anything changed."""
+    if not _cache_dirty:
+        return
+    projects_dir = projects_dir or _default_projects_dir
+    files = {
+        path: [mtime_ns, [[ts, cost] for ts, _key, cost in entries]]
+        for (path, residency), (mtime_ns, entries) in _file_cache.items()
+        if residency is us_residency and path in _used_paths
+    }
+    target = _disk_cache_path(projects_dir)
+    tmp = target.with_suffix(".tmp")
+    try:
+        tmp.write_text(json.dumps({"residency": us_residency, "files": files}))
+        os.replace(tmp, target)  # atomic, so a concurrent render never reads a partial file
+    except OSError:
+        pass
 
 
 # ── Public API ───────────────────────────────────────────────────────────────
@@ -259,6 +327,7 @@ def cumulative_cost(
     projects_dir = projects_dir or _default_projects_dir
     if not projects_dir.exists():
         return 0.0
+    _load_disk_cache(projects_dir, us_residency)
 
     cutoff_ts = cutoff.timestamp()
     # JSONL timestamps are UTC with Z suffix — convert cutoff to match
