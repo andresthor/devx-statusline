@@ -65,6 +65,8 @@
 # name (and a worktree named after one) can't push the cost totals off screen.
 # Set 0 to turn a cap off. The path drops leading directories to keep the
 # current one readable; the branch and worktree names clip with an ellipsis.
+# A worktree name shown on its own stands in for the path, so it takes
+# cwd_max_length; worktree_max_length applies to the bracketed form.
 # cwd_max_length = 40
 # branch_max_length = 32
 # worktree_max_length = 24
@@ -86,7 +88,7 @@
 # cwd = true            # current directory (line 2) — always hidden in a
 #                       # worktree, where the branch already names it
 # branch = true         # git branch (line 2)
-# worktree = true       # bracketed worktree name, when in one (line 2)
+# worktree = true       # worktree name, when in one (line 2)
 # pr = true             # PR review state for the current branch (line 2)
 # daily_cost = true     # Σ today's total (line 2)
 # window_cost = true    # Σ month/week/billing total (line 2)

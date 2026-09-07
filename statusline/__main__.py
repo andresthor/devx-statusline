@@ -525,8 +525,9 @@ def pr_block(data: dict) -> str:
 # ── Worktree ───────────────────────────────────────────────────────────────────
 # Shown on line 2 when the session runs in a linked git worktree. Brackets
 # carry the qualifier meaning ("the branch above is checked out here"), so no
-# glyph is used. The name is suppressed when it equals the branch — a common
-# case (`git worktree add ../fix-bug fix-bug`) where showing both is noise.
+# glyph is used — and they drop when there is nothing above to qualify. The
+# name is suppressed when it equals the branch — a common case
+# (`git worktree add ../fix-bug fix-bug`) where showing both is noise.
 
 def _worktree_name(data: dict) -> str:
     """Best-effort worktree name, or "" when not in a worktree.
@@ -546,11 +547,20 @@ def _worktree_name(data: dict) -> str:
     return os.path.basename(raw.rstrip("/")) or ""
 
 
-def worktree_block(data: dict, branch: str | None, limit: int) -> str:
-    """Bracketed worktree name for line 2, or "" if none / name == branch."""
+def worktree_block(
+    data: dict, branch: str | None, limit: int, standalone: bool = False
+) -> str:
+    """Worktree name for line 2, or "" if none / name == branch.
+
+    ``standalone`` means nothing precedes it on line 2 to qualify, so the name
+    is the location rather than a note about one: it takes cwd's color, and its
+    cap from the caller, losing the brackets and dimming that mark it secondary.
+    """
     name = _worktree_name(data)
     if not name or name == branch:
         return ""
+    if standalone:
+        return f"{fg(*C.BLUE)}{clip(name, limit, middle=True)}{RESET}"
     return f"{fg(*C.OVERLAY0)}[{clip(name, limit)}]{RESET}"
 
 
@@ -792,9 +802,15 @@ def main():
         path_parts.append(f"{fg(*C.SAPPHIRE)}⎇ {label}{RESET}")
 
     if show(cfg, "worktree"):
-        wt = worktree_block(
-            data, branch, num(cfg.get("worktree_max_length"), WORKTREE_MAX_LENGTH)
+        # Standing alone it fills the slot cwd would have had, so it gets
+        # cwd's cap rather than the tighter one meant for a parenthetical.
+        standalone = not path_parts
+        limit = (
+            num(cfg.get("cwd_max_length"), CWD_MAX_LENGTH)
+            if standalone
+            else num(cfg.get("worktree_max_length"), WORKTREE_MAX_LENGTH)
         )
+        wt = worktree_block(data, branch, limit, standalone=standalone)
         if wt:
             path_parts.append(wt)
 

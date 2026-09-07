@@ -136,10 +136,11 @@ branch, so both would say the same thing — which makes `_worktree_name()`
 load-bearing for more than the worktree slot itself.
 
 The `[worktree]` and `[pr]` slots on line 2 appear only when the payload reports
-them — a bracketed worktree name when the session runs in a linked worktree,
-and the current branch's PR review state (linked to its URL) otherwise. Both
-degrade to nothing when absent, so line 2 stays uncluttered in a plain repo
-with no PR.
+them — the worktree name when the session runs in a linked worktree, and the
+current branch's PR review state (linked to its URL) otherwise. Both degrade to
+nothing when absent, so line 2 stays uncluttered in a plain repo with no PR.
+The worktree name is bracketed and dimmed as a qualifier on whatever precedes
+it, and takes cwd's color, cap and slot unbracketed when nothing does.
 
 ## Config
 
