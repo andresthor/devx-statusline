@@ -25,20 +25,21 @@ _default_projects_dir = Path.home() / ".claude" / "projects"
 #   cache read = 0.10x  ·  5-min write = 1.25x  ·  1-hour write = 2.0x  (of base input)
 # Claude Code writes almost exclusively to the 1-hour cache tier.
 
-# Corti models are priced separately, from Corti's own model sheet rather than
-# the Anthropic page above. Their cached rate is 0.10x base input, which the
-# shared multiplier below already gets right. corti-s1-tiny is deliberately
-# absent: it is unpriced upstream, so it should surface the warning.
+# Corti models are priced from Corti's model metadata, not the Anthropic page.
+# corti-s1-tiny is deliberately absent: unpriced upstream, so it surfaces the
+# warning. The ultra aliases currently bill at corti-s1's rates; re-check when
+# that changes upstream.
 _BASE_PRICING: dict[str, tuple[float, float]] = {
-    "corti-s1-ultra-instant-beta": (4.0, 16.0),
-    "corti-s1-ultra-instant": (4.0, 16.0),
-    "corti-s1-ultra-beta": (4.0, 16.0),
-    "corti-s1-ultra": (4.0, 16.0),
+    "corti-s1-ultra-instant-beta": (2.0, 8.0),
+    "corti-s1-ultra-instant": (2.0, 8.0),
+    "corti-s1-ultra-beta": (2.0, 8.0),
+    "corti-s1-ultra": (2.0, 8.0),
     "corti-s1-mini-instant": (1.0, 4.0),
     "corti-s1-mini": (1.0, 4.0),
     "corti-s1-instant": (2.0, 8.0),
     "corti-s1-beta": (2.0, 8.0),
     "corti-s1": (2.0, 8.0),
+    "corti-s1-embedding": (0.03, 0.0),
     "claude-fable-5": (10.0, 50.0),
     "claude-mythos-5": (10.0, 50.0),
     "claude-opus-5": (5.0, 25.0),
