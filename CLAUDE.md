@@ -126,6 +126,10 @@ Line 1:  [⚠]  [context]  [turns $session]  [usage or duration]  • [model eff
 Line 2:  [cwd]  [branch]  [worktree]  [pr]  • [Σ today]  • [Σ window]
 ```
 
+The model name on line 1 carries the instance label's orange, except for corti
+models — matched by a substring of `model.display_name`, not the id — which take
+a brand lime. The effort meter beside it inherits whichever color applied.
+
 `render_usage_block()` picks between two things for the middle of line 1: the
 plan's published usage limits when the payload has `rate_limits`, and
 wall-clock plus API-time bars for the current session when it doesn't.

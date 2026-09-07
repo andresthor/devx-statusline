@@ -70,7 +70,7 @@ file to create — everything has a working default.
 | `$4.2` | What this session has cost so far. |
 | `◷ ══─── 1:22` | How long the session has been open (wall clock). |
 | `◉ ══─── 13m` | How much of that was spent waiting on Claude. |
-| `Opus 5 high` | The model, and its reasoning effort level. |
+| `Opus 5  ●●● high` | The model in orange, and a three-dot meter for its reasoning effort. Corti models render in their brand lime instead. |
 | `work` | Your label for this account, in orange. Off unless you set one. |
 | `◷ 14:07` | When Claude last replied. |
 

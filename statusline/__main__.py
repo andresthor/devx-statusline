@@ -131,6 +131,8 @@ class C:
     MAROON = (235, 160, 172)
     DEEP_RED = (170, 55, 80)
     CLAUDE_ORANGE = (215, 119, 87)
+    # Corti-brand lime — the case color for corti models and their effort meter
+    CORTI_LIME = (159, 224, 0)
 
 
 RESET = "\033[0m"
@@ -361,6 +363,26 @@ def fmt_duration(ms: int) -> str:
     h = s // 3600
     m = (s % 3600) // 60
     return f"{h}:{m:02d}"
+
+
+_EFFORT_METER = {
+    "high": (3, "high"),
+    "medium": (2, "medium"),
+    "low": (1, "low"),
+}
+
+
+def effort_meter(level: str, color: tuple) -> str:
+    """Three-dot meter plus the level word, all in ``color``.
+
+    ``●●● high`` for high, ``●●○ medium`` for medium, ``●○○ low`` for low.
+    Unknown levels degrade to the word alone so a new level name still shows.
+    """
+    if not level:
+        return ""
+    filled, label = _EFFORT_METER.get(level, (0, level))
+    dots = "●" * filled + "○" * (3 - filled)
+    return f"{fg(*color)}{dots} {label}{RESET}"
 
 
 # Reference points for the session-duration bars (shown when the plan exposes
@@ -781,9 +803,14 @@ def main():
 
     right = []
     if model_name and show(cfg, "model"):
-        model_str = f"{fg(*C.OVERLAY2)}{model_name}{RESET}"
+        # Corti models get the brand lime; everything else gets the warm orange
+        # that the instance label uses — a quick visual split between the two.
+        model_col = C.CORTI_LIME if "corti" in model_name.lower() else C.CLAUDE_ORANGE
+        model_str = f"{fg(*model_col)}{model_name}{RESET}"
         if effort_level and show(cfg, "effort"):
-            model_str += f" {fg(*C.OVERLAY0)}{effort_level}{RESET}"
+            meter = effort_meter(effort_level, model_col)
+            if meter:
+                model_str += "  " + meter
         right.append(model_str)
     instance_label = text(cfg.get("instance_label"))
     if instance_label and show(cfg, "instance_label"):
