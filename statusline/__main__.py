@@ -45,10 +45,28 @@ except ImportError:
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 CLAUDE_DIR = Path(os.environ.get("CLAUDE_CONFIG_DIR", Path.home() / ".claude"))
-CONFIG_PATHS = [
-    SCRIPT_DIR / "config.toml",  # next to the script
-    CLAUDE_DIR / "statusline.toml",  # user-global fallback
-]
+# Where the script was invoked from, symlinks left unresolved: an install that
+# links the source files into place keeps its config here, out of the checkout.
+LINK_DIR = Path(__file__).parent
+
+
+def _config_paths() -> list[Path]:
+    paths = [
+        SCRIPT_DIR / "config.toml",  # next to the source
+        CLAUDE_DIR / "statusline.toml",  # user-global fallback
+        LINK_DIR / "config.toml",  # next to the symlink, if it is its own dir
+    ]
+    seen: set[str] = set()
+    unique = []
+    for path in paths:
+        key = str(path.resolve())
+        if key not in seen:
+            seen.add(key)
+            unique.append(path)
+    return unique
+
+
+CONFIG_PATHS = _config_paths()
 
 
 def load_config() -> dict:
