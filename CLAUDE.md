@@ -123,7 +123,7 @@ Keep these in mind before adding anything:
 
 ```
 Line 1:  [⚠]  [context]  [turns $session]  [usage or duration]  • [model effort]  [label]  [◷ last reply]
-Line 2:  [cwd]  [branch]  [worktree]  [pr]  • [Σ today]  • [Σ window]
+Line 2:  [cwd]  [branch]  [worktree]  [pr]  • [Σ today]  • [Σ window]  • [↑ behind]
 ```
 
 The model name on line 1 carries the instance label's orange, except for corti
@@ -145,6 +145,24 @@ current branch's PR review state (linked to its URL) otherwise. Both degrade to
 nothing when absent, so line 2 stays uncluttered in a plain repo with no PR.
 The worktree name is bracketed and dimmed as a qualifier on whatever precedes
 it, and takes the branch glyph with cwd's color, cap and slot when nothing does.
+
+## The update check
+
+`commits_behind()` reports how far the checkout this script runs from is behind
+its upstream, rendered as `↑ N` at the far right of line 2. It reads git's refs
+off disk — `HEAD`, the branch ref, and `refs/remotes/origin/<branch>`, falling
+back to `packed-refs` — so the usual case of matching SHAs answers without
+spawning anything. Only a divergence runs `git rev-list --count`, and that
+result is cached in the temp dir against both SHAs.
+
+Nothing here fetches, which keeps the no-network rule intact but means the
+indicator is only as current as the last `git fetch` from somewhere else. A
+copy install has no `.git` and reports nothing, which is the correct answer for
+a directory that has no upstream.
+
+`__version__` in `__main__.py` is not rendered anywhere — it exists to tag
+releases and to tell copies apart. Bump it in the same commit as the change it
+describes.
 
 ## Config
 

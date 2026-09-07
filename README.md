@@ -94,6 +94,7 @@ duration bars shown above.
 | `✓ #1234` | The current branch's PR, with its review state. Clickable to open the PR. |
 | `Σ $19.1·day` | Everything you've spent today, across all projects. |
 | `Σ $284.0·mo` | Same, for the last 30 days. |
+| `↑ 3` | Your checkout is 3 commits behind its upstream. Only for git installs, and only as current as your last `git fetch` — the statusline never fetches. |
 
 Occasionally a `⚠` appears at the far left of line 1. That means the built-in
 price list needs updating — see [CLAUDE.md](CLAUDE.md), or just tell Claude

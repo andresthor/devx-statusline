@@ -11,10 +11,12 @@ statusline.toml in your Claude config directory (~/.claude by default).
 """
 
 import calendar
+import hashlib
 import json
 import os
 import subprocess
 import sys
+import tempfile
 import tomllib
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -42,6 +44,8 @@ except ImportError:
 
 
 # ── Config ────────────────────────────────────────────────────────────────────
+
+__version__ = "1.0.0"
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 CLAUDE_DIR = Path(os.environ.get("CLAUDE_CONFIG_DIR", Path.home() / ".claude"))
@@ -605,6 +609,95 @@ def worktree_block(
     return f"{fg(*C.OVERLAY0)}[{clip(name, limit)}]{RESET}"
 
 
+# ── Update check ──────────────────────────────────────────────────────────────
+# Whether the checkout this script runs from is behind its upstream. Git's refs
+# are read directly, and nothing here fetches — so it reports what the last
+# fetch saw, and a copy install with no .git reports nothing at all.
+
+# Named per checkout so several installs don't invalidate each other's entry.
+# str.__hash__ is salted per process, so the digest has to come from hashlib.
+_UPDATE_CACHE = (
+    Path(tempfile.gettempdir())
+    / f"devx-statusline-{hashlib.sha1(str(SCRIPT_DIR).encode()).hexdigest()[:8]}.json"
+)
+
+
+def _ref_sha(git_dir: Path, ref: str) -> str:
+    """SHA for a ref, from its loose file or packed-refs. "" when absent."""
+    try:
+        return (git_dir / ref).read_text().strip()
+    except OSError:
+        pass
+    try:
+        for line in (git_dir / "packed-refs").read_text().splitlines():
+            parts = line.split()
+            if len(parts) == 2 and parts[1] == ref:
+                return parts[0]
+    except OSError:
+        pass
+    return ""
+
+
+def _count_behind(repo: Path, upstream_ref: str) -> int:
+    try:
+        result = subprocess.run(
+            ["git", "-C", str(repo), "rev-list", "--count", f"HEAD..{upstream_ref}"],
+            capture_output=True,
+            text=True,
+            timeout=2,
+        )
+        return num(result.stdout.strip(), 0)
+    except Exception:
+        return 0
+
+
+def commits_behind() -> int:
+    """Commits upstream has that this checkout does not, or 0 when unknown.
+
+    Equal ref SHAs — the usual case — answer this without spawning git at all,
+    and the counting call is cached against both SHAs so a diverged checkout
+    pays for it once rather than on every render.
+    """
+    repo = SCRIPT_DIR.parent
+    git_dir = repo / ".git"
+    try:
+        head = (git_dir / "HEAD").read_text().strip()
+    except OSError:
+        return 0
+    if not head.startswith("ref: "):
+        return 0  # detached HEAD — no branch to compare against
+    branch_ref = head[5:]
+    upstream_ref = branch_ref.replace("refs/heads/", "refs/remotes/origin/", 1)
+    local = _ref_sha(git_dir, branch_ref)
+    remote = _ref_sha(git_dir, upstream_ref)
+    if not local or not remote or local == remote:
+        return 0
+
+    cached = {}
+    try:
+        cached = json.loads(_UPDATE_CACHE.read_text())
+    except (OSError, ValueError):
+        pass
+    if cached.get("local") == local and cached.get("remote") == remote:
+        return num(cached.get("behind"), 0)
+
+    behind = _count_behind(repo, upstream_ref)
+    try:
+        _UPDATE_CACHE.write_text(
+            json.dumps({"local": local, "remote": remote, "behind": behind})
+        )
+    except OSError:
+        pass
+    return behind
+
+
+def update_block(behind: int) -> str:
+    """``↑ N`` when the checkout is behind upstream, else ""."""
+    if behind <= 0:
+        return ""
+    return f"{fg(*C.YELLOW)}↑ {behind}{RESET}"
+
+
 def git_branch(cwd: str) -> str | None:
     try:
         result = subprocess.run(
@@ -887,6 +980,10 @@ def main():
         line2_clusters.append(gap.join(path_parts))
     if cost_parts:
         line2_clusters.append(dot.join(cost_parts))
+    if show(cfg, "update"):
+        upd = update_block(commits_behind())
+        if upd:
+            line2_clusters.append(upd)
     line2 = gap + dot.join(line2_clusters) if line2_clusters else ""
 
     print(line1)
