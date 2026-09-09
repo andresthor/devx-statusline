@@ -47,7 +47,7 @@ except ImportError:
 
 # ── Config ────────────────────────────────────────────────────────────────────
 
-__version__ = "1.0.0"
+__version__ = "1.0.1"
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 CLAUDE_DIR = Path(os.environ.get("CLAUDE_CONFIG_DIR", Path.home() / ".claude"))
@@ -193,7 +193,7 @@ LINEAR_BLOCK_COLORS = [
 
 
 def working_zone_color(pct: float) -> tuple:
-    """Color for 0-100% of the working zone (0-256k)."""
+    """Color for 0-100% of the working zone."""
     if pct < 20:
         return C.GREEN_DIM
     elif pct < 40:
@@ -207,7 +207,7 @@ def working_zone_color(pct: float) -> tuple:
 
 
 def linear_ctx_color(pct: float) -> tuple:
-    """Color for 0-100% of full context (models ≤256k)."""
+    """Color for 0-100% of full context."""
     if pct < 15:
         return C.GREEN_DIM
     elif pct < 30:
@@ -262,7 +262,7 @@ def context_bar_split(
 
 
 def context_bar_linear(used_pct: float, per_block: bool = True, width: int = 8) -> str:
-    """Linear bar for models with context ≤256k."""
+    """Linear bar for models whose context is at most 2× the working zone."""
     filled = max(0, min(width, round(used_pct / 100 * width)))
     return f"{_render_bar(filled, width, LINEAR_BLOCK_COLORS, per_block)}{RESET}"
 
@@ -856,7 +856,11 @@ def main():
     # Context block — color and bar shape adapt to the context window size
     if show(cfg, "context"):
         per_block = cfg.get("per_block_colors", True)
-        if ctx_size > WORKING_ZONE_TOKENS:
+        # The split bar's comfortable zone is a fixed 256k, which only reads as
+        # a fraction of the window when the window is large. Below 2× that, the
+        # comfortable zone would dominate and the overflow tiles would cram into
+        # a sliver — so those windows use the honest linear bar instead.
+        if ctx_size > WORKING_ZONE_TOKENS * 2:
             w_pct = min(100.0, used_tokens / WORKING_ZONE_TOKENS * 100)
             ctx_col = working_zone_color(w_pct)
             bar_s = context_bar_split(used_tokens, ctx_size, per_block=per_block)
