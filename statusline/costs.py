@@ -17,21 +17,24 @@ import re
 import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import TypeVar
 
 _default_projects_dir = Path.home() / ".claude" / "projects"
 
 # ── Pricing ──────────────────────────────────────────────────────────────────
 # Source: https://platform.claude.com/docs/en/about-claude/pricing
 #
-# Base (input, output) USD per MILLION tokens, by model prefix. Cache rates are
+# Base (input, output) USD per MILLION tokens, by model prefix. Write rates are
 # *derived* from the base input rate (one number to maintain per model):
-#   cache read = 0.10x  ·  5-min write = 1.25x  ·  1-hour write = 2.0x  (of base input)
-# Claude Code writes almost exclusively to the 1-hour cache tier.
+#   5-min write = 1.25x  ·  1-hour write = 2.0x  (of base input)
+# Cache reads are per-model: 0.10x of base input except where a model prices
+# hits lower (_CACHE_READ_MULTS below). Claude Code writes almost exclusively
+# to the 1-hour cache tier.
 
 # Corti models are priced from Corti's model metadata, not the Anthropic page.
-# corti-s1-tiny is deliberately absent: unpriced upstream, so it surfaces the
-# warning. The ultra aliases currently bill at corti-s1's rates; re-check when
-# that changes upstream.
+# corti-s1-tiny and corti-s1-tiny-instant are deliberately absent: unpriced
+# upstream, so they surface the warning. The ultra aliases currently bill at
+# corti-s1's rates (same GLM-5.2 backend); re-check when that changes upstream.
 _BASE_PRICING: dict[str, tuple[float, float]] = {
     "corti-s1-ultra-instant-beta": (2.0, 8.0),
     "corti-s1-ultra-instant": (2.0, 8.0),
@@ -39,12 +42,16 @@ _BASE_PRICING: dict[str, tuple[float, float]] = {
     "corti-s1-ultra": (2.0, 8.0),
     "corti-s1-mini-instant": (1.0, 4.0),
     "corti-s1-mini": (1.0, 4.0),
+    "corti-s1-instant-beta": (2.0, 8.0),
     "corti-s1-instant": (2.0, 8.0),
     "corti-s1-beta": (2.0, 8.0),
     "corti-s1": (2.0, 8.0),
     "corti-s1-embedding": (0.03, 0.0),
+    "claude-fable-5-1": (10.0, 50.0),
+    "claude-mythos-5-1": (10.0, 50.0),
     "claude-fable-5": (10.0, 50.0),
     "claude-mythos-5": (10.0, 50.0),
+    "claude-opus-5-5": (4.0, 20.0),
     "claude-opus-5": (5.0, 25.0),
     "claude-opus-4-8": (5.0, 25.0),
     "claude-opus-4-7": (5.0, 25.0),
@@ -57,6 +64,10 @@ _BASE_PRICING: dict[str, tuple[float, float]] = {
     "claude-haiku-4-5": (1.0, 5.0),
 }
 
+# 5.5 pricing: https://platform.claude.com/docs/en/about-claude/pricing —
+# Opus 5.5 drops to $4/$20 with cache hits at 0.05x; Fable/Mythos 5.1 at
+# $10/$50 with hits at 0.025x. Sonnet 5's $2/$10 became standard price.
+
 # Fallback for unknown models — current Opus base. The ⚠ indicator fires when
 # this path is taken, so the guess is visible rather than silent.
 _FALLBACK_BASE = _BASE_PRICING["claude-opus-5"]
@@ -65,6 +76,7 @@ _FALLBACK_BASE = _BASE_PRICING["claude-opus-5"]
 # million; caching multipliers stack on top of these. Models absent here have no
 # fast tier and bill at standard base.
 _FAST_PRICING: dict[str, tuple[float, float]] = {
+    "claude-opus-5-5": (8.0, 40.0),
     "claude-opus-5": (10.0, 50.0),
     "claude-opus-4-8": (10.0, 50.0),
     # 4.7 fast mode was withdrawn; kept so older sessions still price correctly.
@@ -72,9 +84,17 @@ _FAST_PRICING: dict[str, tuple[float, float]] = {
 }
 
 # Cache rates as a multiple of the (possibly fast-adjusted) base input rate.
-_CACHE_READ_MULT = 0.10  # cache hit / refresh
+_CACHE_READ_MULT = 0.10  # standard cache hit / refresh
 _CACHE_5M_MULT = 1.25  # 5-minute cache write
 _CACHE_1H_MULT = 2.00  # 1-hour cache write (Claude Code's default tier)
+
+# Newer models price cache hits below the standard 0.10x (pricing-table
+# footnotes). Absent here → _CACHE_READ_MULT.
+_CACHE_READ_MULTS: dict[str, float] = {
+    "claude-fable-5-1": 0.025,
+    "claude-mythos-5-1": 0.025,
+    "claude-opus-5-5": 0.05,
+}
 
 # US data residency applies a 1.1x multiplier to every token category. It is set
 # per-request via inference_geo == "us" OR as a workspace default (in which case
@@ -82,6 +102,8 @@ _CACHE_1H_MULT = 2.00  # 1-hour cache write (Claude Code's default tier)
 # Sonnet 4.6 and later are eligible; earlier models reject the parameter.
 _US_RESIDENCY_MULT = 1.1
 _RESIDENCY_ELIGIBLE = (
+    "claude-fable-5-1",
+    "claude-mythos-5-1",
     "claude-fable-5",
     "claude-mythos-5",
     "claude-opus-5",
@@ -139,13 +161,20 @@ def due_watch_dates(
 _SAME_MODEL_SUFFIX = re.compile(r"^(-\d|\[)")
 
 
-def _prefix_lookup(table: dict[str, tuple[float, float]], model_id: str):
+_V = TypeVar("_V")
+
+
+def _prefix_lookup(table: dict[str, _V], model_id: str) -> _V | None:
     for prefix, rates in table.items():
         if model_id == prefix:
             return rates
         if model_id.startswith(prefix) and _SAME_MODEL_SUFFIX.match(model_id[len(prefix) :]):
             return rates
     return None
+
+
+def _cache_read_mult(model_id: str) -> float:
+    return _prefix_lookup(_CACHE_READ_MULTS, model_id) or _CACHE_READ_MULT
 
 
 def _message_cost(usage: dict, model_id: str, us_residency: bool = False) -> float:
@@ -161,7 +190,7 @@ def _message_cost(usage: dict, model_id: str, us_residency: bool = False) -> flo
     micros = (
         usage.get("input_tokens", 0) * base_in
         + usage.get("output_tokens", 0) * base_out
-        + usage.get("cache_read_input_tokens", 0) * base_in * _CACHE_READ_MULT
+        + usage.get("cache_read_input_tokens", 0) * base_in * _cache_read_mult(model_id)
     )
 
     # Cache writes: split 1h/5m from the nested object. Older logs without the
