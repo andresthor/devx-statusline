@@ -155,10 +155,10 @@ def due_watch_dates(
     return due
 
 
-# What may follow a table key and still be the same model: a date/version stamp
-# (-20251001) or a context-variant tag ([1m]). A bare word suffix is a different
-# model — corti-s1-ultra is not corti-s1 — and must miss so the warning fires.
-_SAME_MODEL_SUFFIX = re.compile(r"^(-\d|\[)")
+# What may follow a table key and still be the same model: a full date stamp
+# (-20251001) or a context-variant tag ([1m]). A shorter -digit suffix is the
+# next version naming itself (opus-5-5) and must miss so the warning fires.
+_SAME_MODEL_SUFFIX = re.compile(r"^(-\d{8}|\[)")
 
 
 _V = TypeVar("_V")

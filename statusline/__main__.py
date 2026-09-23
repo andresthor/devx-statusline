@@ -47,7 +47,7 @@ except ImportError:
 
 # ── Config ────────────────────────────────────────────────────────────────────
 
-__version__ = "1.0.3"
+__version__ = "1.0.4"
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 CLAUDE_DIR = Path(os.environ.get("CLAUDE_CONFIG_DIR", Path.home() / ".claude"))
