@@ -47,7 +47,7 @@ except ImportError:
 
 # ── Config ────────────────────────────────────────────────────────────────────
 
-__version__ = "1.0.2"
+__version__ = "1.0.3"
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 CLAUDE_DIR = Path(os.environ.get("CLAUDE_CONFIG_DIR", Path.home() / ".claude"))
@@ -372,22 +372,25 @@ def fmt_duration(ms: int) -> str:
 
 
 _EFFORT_METER = {
-    "high": (3, "high"),
-    "medium": (2, "medium"),
     "low": (1, "low"),
+    "medium": (2, "medium"),
+    "high": (3, "high"),
+    "xhigh": (4, "xhigh"),
+    "max": (5, "max"),
 }
 
 
 def effort_meter(level: str, color: tuple) -> str:
-    """Three-dot meter plus the level word, all in ``color``.
+    """Five-slot meter plus the level word, all in ``color``.
 
-    ``●●● high`` for high, ``●●○ medium`` for medium, ``●○○ low`` for low.
-    Unknown levels degrade to the word alone so a new level name still shows.
+    Count encodes level: ``●●●●● max`` down to ``●○○○○ low``. The API's
+    effort ladder is five levels (low→max); unknown levels degrade to the
+    word alone so a new level name still shows.
     """
     if not level:
         return ""
     filled, label = _EFFORT_METER.get(level, (0, level))
-    dots = "●" * filled + "○" * (3 - filled)
+    dots = "●" * filled + "○" * (5 - filled)
     return f"{fg(*color)}{dots} {label}{RESET}"
 
 
