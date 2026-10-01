@@ -31,15 +31,25 @@ _default_projects_dir = Path.home() / ".claude" / "projects"
 # hits lower (_CACHE_READ_MULTS below). Claude Code writes almost exclusively
 # to the 1-hour cache tier.
 
-# Corti models are priced from Corti's model metadata, not the Anthropic page.
-# corti-s1-tiny and corti-s1-tiny-instant are deliberately absent: unpriced
-# upstream, so they surface the warning. The ultra aliases currently bill at
-# corti-s1's rates (same GLM-5.2 backend); re-check when that changes upstream.
+# Corti models are priced from the ai-gateway-operator's modelprofile cost
+# metadata (config/services/ai-gateway-operator/base/values.yaml in
+# ~/corti/deployments), not the Anthropic page. corti-s1-beta moved to the
+# 20260928 GLM-5.3-Flash backend (same cost); the alphas are the same backend in
+# NVFP4 on B300 with a 1M context. corti-s1-tiny and corti-s1-tiny-instant are
+# deliberately absent: unpriced upstream, so they surface the warning. The
+# ultra aliases currently bill at corti-s1's rates (same GLM-5.2 backend);
+# re-check when that changes upstream.
 _BASE_PRICING: dict[str, tuple[float, float]] = {
     "corti-s1-ultra-instant-beta": (2.0, 8.0),
     "corti-s1-ultra-instant": (2.0, 8.0),
     "corti-s1-ultra-beta": (2.0, 8.0),
     "corti-s1-ultra": (2.0, 8.0),
+    "corti-s1-instant-alpha": (2.0, 8.0),
+    "corti-s1-alpha": (2.0, 8.0),
+    "corti-s1-instant-alpha": (2.0, 8.0),
+    "corti-s1-alpha": (2.0, 8.0),
+    "corti-s1-mini-instant-beta": (1.0, 4.0),
+    "corti-s1-mini-beta": (1.0, 4.0),
     "corti-s1-mini-instant": (1.0, 4.0),
     "corti-s1-mini": (1.0, 4.0),
     "corti-s1-instant-beta": (2.0, 8.0),
@@ -58,6 +68,7 @@ _BASE_PRICING: dict[str, tuple[float, float]] = {
     "claude-opus-4-6": (5.0, 25.0),
     "claude-opus-4-5": (5.0, 25.0),
     "claude-opus-4-1": (15.0, 75.0),
+    "claude-sonnet-5-5": (2.0, 10.0),
     "claude-sonnet-5": (2.0, 10.0),
     "claude-sonnet-4-6": (3.0, 15.0),
     "claude-sonnet-4-5": (3.0, 15.0),
