@@ -767,6 +767,28 @@ def render_usage_block(data: dict, cfg: dict, dot: str) -> str:
     )
 
 
+def drop_lane(session_id: str, transcript: Path | None, used_pct: float, used_tokens: int, ctx_size: int) -> None:
+    """Hand this pane's context occupancy to my.overview's LANES: one small file per herdr pane, replaced in place.
+
+    Only inside herdr (HERDR_PANE_ID); never fails the statusline."""
+    pane = os.environ.get("HERDR_PANE_ID", "")
+    if not pane or not all(c.isalnum() or c in "-_:" for c in pane):
+        return
+    try:
+        state = Path(os.environ.get("XDG_STATE_HOME") or Path.home() / ".local" / "state")
+        out = state / "overview" / "lanes"
+        out.mkdir(parents=True, exist_ok=True)
+        doc = {"v": 1, "pane": pane, "session": session_id, "transcript": str(transcript or ""),
+               "used_pct": round(used_pct, 1), "used_tokens": int(used_tokens), "ctx_size": int(ctx_size),
+               "zone_tokens": WORKING_ZONE_TOKENS, "at": round(datetime.now().timestamp(), 3)}
+        fd, tmp = tempfile.mkstemp(dir=out, prefix=".", suffix=".tmp")
+        with os.fdopen(fd, "w") as f:
+            json.dump(doc, f)
+        os.replace(tmp, out / f"{pane.replace(':', '_')}.json")
+    except Exception:
+        pass
+
+
 def main():
     try:
         data = json.load(sys.stdin)
@@ -827,6 +849,7 @@ def main():
         if recovered:
             used_tokens = recovered
             used_pct = used_tokens / ctx_size * 100 if ctx_size else 0.0
+    drop_lane(session_id, transcript, used_pct, used_tokens, ctx_size)
 
     # Today's cost, from a configurable reset hour
     day_start_hour = int(cfg.get("day_start_hour", 0))
