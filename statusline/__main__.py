@@ -768,10 +768,10 @@ def render_usage_block(data: dict, cfg: dict, dot: str) -> str:
 
 
 def drop_lane(session_id: str, transcript: Path | None, used_pct: float, used_tokens: int, ctx_size: int) -> None:
-    """Hand this pane's context occupancy to my.overview's LANES: one small file per herdr pane, replaced in place.
+    """Hand this pane's context occupancy to my.overview's LANES: one small file per multiplexer pane, replaced in place.
 
-    Only inside herdr (HERDR_PANE_ID); never fails the statusline."""
-    pane = os.environ.get("HERDR_PANE_ID", "")
+    Only inside herdr (HERDR_PANE_ID) or Rex (REX_BLOCK); never fails the statusline."""
+    pane = os.environ.get("HERDR_PANE_ID") or os.environ.get("REX_BLOCK", "")
     if not pane or not all(c.isalnum() or c in "-_:" for c in pane):
         return
     try:
